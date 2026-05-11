@@ -10,7 +10,8 @@
 - executable：开箱即用目录
   - spec-qc-*.jar：可执行 jar
   - config.yaml：运行配置（DeepSeek/端口/work_dir）
-  - start.bat/init_work.bat：Windows 启动/初始化脚本
+  - start.bat：Windows 启动脚本（无参数默认启动 web；参数会透传给 jar）
+  - init_work.bat：Windows 初始化工作目录脚本（创建 work/input/output/quality/logs/revise 等）
   - start.sh：macOS / Linux 启动脚本（无参数默认启动 web；参数会透传给 jar）
   - init_work.sh：macOS / Linux 初始化工作目录脚本（创建 work/input/output/quality/logs/revise 等）
   - work：默认工作目录（示例输入、输出、规则、日志）

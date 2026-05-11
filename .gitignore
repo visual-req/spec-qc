@@ -12,6 +12,16 @@ work/
 !work/quality/
 work/quality/*
 !work/quality/*.md
+!work/input/
+!work/input/.gitkeep
+!work/output/
+!work/output/.gitkeep
+!work/logs/
+!work/logs/.gitkeep
+!work/revise/
+!work/revise/.gitkeep
+!work/req_copy/
+!work/req_copy/.gitkeep
 
 executable/work/
 !executable/work/quality/

@@ -12,7 +12,7 @@
 
 ## 快速开始（Web UI）
 
-1) 配置 DeepSeek
+1) 配置大模型访问（以 DeepSeek 为例）
 
 编辑 `executable/config.yaml`：
 
@@ -33,6 +33,8 @@ work_dir: "work"
 
 ```bash
 export DEEPSEEK_API_KEY="..."
+export DEEPSEEK_BASE_URL="https://api.deepseek.com/v1"
+export DEEPSEEK_MODEL="deepseek-chat"
 export SPEC_QC_WORK_DIR="/abs/path/to/work"
 ```
 
@@ -93,4 +95,4 @@ java -jar spec-qc-0.1.0.jar scan -req /path/to/req_dir
 
 ## 安全提示
 
-- 不要把真实 `deepseek.api_key` 提交到仓库；推荐用环境变量 `DEEPSEEK_API_KEY` 注入
+- 不要把真实 `deepseek.api_key` 或 `DEEPSEEK_API_KEY` 提交到仓库；推荐用环境变量注入

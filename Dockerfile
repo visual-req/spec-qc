@@ -1,10 +1,13 @@
-FROM maven:3.9.10-eclipse-temurin-17 AS build
+ARG BUILD_IMAGE=maven:3.9.10-eclipse-temurin-17
+ARG RUNTIME_IMAGE=eclipse-temurin:17-jre
+
+FROM ${BUILD_IMAGE} AS build
 
 WORKDIR /src
 COPY . .
 RUN mvn -f backend/pom.xml -DskipTests package
 
-FROM eclipse-temurin:17-jre
+FROM ${RUNTIME_IMAGE}
 
 WORKDIR /opt/spec-qc
 COPY --from=build /src/backend/target/spec-qc-*.jar /opt/spec-qc/spec-qc.jar

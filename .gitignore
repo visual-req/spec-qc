@@ -3,6 +3,8 @@
 *.tmp
 .DS_Store
 
+deploy*.sh
+
 backend/target/
 frontend/node_modules/
 frontend/dist/

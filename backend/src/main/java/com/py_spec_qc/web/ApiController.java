@@ -53,6 +53,7 @@ import org.springframework.web.multipart.MultipartFile;
 public final class ApiController {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final DateTimeFormatter ISO_SECONDS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
+    private static final DateTimeFormatter UPLOAD_TS = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS");
     private static final Object LOG_LOCK = new Object();
     private static final Pattern HTML_TABLE = Pattern.compile("(?is)<table>\\s*(.*?)\\s*</table>");
     private static final Pattern HTML_TR = Pattern.compile("(?is)<tr>\\s*(.*?)\\s*</tr>");
@@ -106,6 +107,70 @@ public final class ApiController {
         return toAbsolutePathString(fallback);
     }
 
+    private static final class UploadDirs {
+        private final Path baseWorkDir;
+        private final Path reqDir;
+        private final Path outDir;
+        private final Path rulesDir;
+        private final Path uploadsDir;
+
+        private UploadDirs(Path baseWorkDir, Path reqDir, Path outDir, Path rulesDir, Path uploadsDir) {
+            this.baseWorkDir = baseWorkDir;
+            this.reqDir = reqDir;
+            this.outDir = outDir;
+            this.rulesDir = rulesDir;
+            this.uploadsDir = uploadsDir;
+        }
+    }
+
+    private UploadDirs resolveUploadDirsOrThrow() throws IOException {
+        List<Path> candidates = new ArrayList<>();
+        candidates.add(workDir);
+        try {
+            AppConfig config = new ConfigLoader().load();
+            if (config != null && config.workDir != null) {
+                candidates.add(config.workDir);
+            }
+            if (config != null && config.configPath != null) {
+                Path configDir = config.configPath.toAbsolutePath().normalize().getParent();
+                if (configDir != null) {
+                    candidates.add(configDir.resolve("work"));
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        candidates.add(Path.of("").toAbsolutePath().normalize().resolve("work"));
+        try {
+            candidates.add(Path.of(System.getProperty("user.home")).toAbsolutePath().normalize().resolve("spec-qc-work"));
+        } catch (Exception ignored) {
+        }
+
+        IOException last = null;
+        for (Path raw : candidates) {
+            if (raw == null) {
+                continue;
+            }
+            Path base = raw.toAbsolutePath().normalize();
+            Path req = base.resolve("input").toAbsolutePath().normalize();
+            Path out = base.resolve("output").toAbsolutePath().normalize();
+            Path rules = base.resolve("quality").toAbsolutePath().normalize();
+            Path uploads = base.resolve("uploads").toAbsolutePath().normalize();
+            try {
+                Files.createDirectories(req);
+                Files.createDirectories(out);
+                Files.createDirectories(rules);
+                Files.createDirectories(uploads);
+                return new UploadDirs(base, req, out, rules, uploads);
+            } catch (IOException e) {
+                last = new IOException("work_dir=" + base + " err=" + (e.getMessage() == null ? String.valueOf(e) : e.getMessage()), e);
+            }
+        }
+        if (last != null) {
+            throw new IOException("创建上传目录失败: " + (last.getMessage() == null ? "" : last.getMessage()), last);
+        }
+        throw new IOException("创建上传目录失败");
+    }
+
     @PostMapping("/scan")
     public ResponseEntity<Map<String, String>> startScan(@RequestBody ScanRequest req) {
         String reqDir = req == null ? "" : safeTrim(req.reqDir);
@@ -140,31 +205,36 @@ public final class ApiController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "req_files is required"));
         }
 
-        Path base = workDir.resolve("uploads").toAbsolutePath().normalize();
-        String uploadId = java.util.UUID.randomUUID().toString().replace("-", "");
-        Path reqDir = base.resolve(uploadId).resolve("req").toAbsolutePath().normalize();
-        Path rulesDir = base.resolve(uploadId).resolve("rules").toAbsolutePath().normalize();
-
+        UploadDirs dirs;
         try {
-            Files.createDirectories(reqDir);
-            if (rulesFiles != null && rulesFiles.length > 0) {
-                Files.createDirectories(rulesDir);
-            }
+            dirs = resolveUploadDirsOrThrow();
         } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "创建上传目录失败"));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", e.getMessage() == null ? "创建上传目录失败" : e.getMessage()));
         }
 
         try {
-            saveUploadedFiles(reqFiles, reqDir, true);
-            if (rulesFiles != null && rulesFiles.length > 0) {
-                saveUploadedFiles(rulesFiles, rulesDir, false);
-            }
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage() == null ? String.valueOf(e) : e.getMessage()));
-        }
+            String uploadId = java.util.UUID.randomUUID().toString().replace("-", "");
+            Path tempReqDir = dirs.uploadsDir.resolve(uploadId).resolve("req").toAbsolutePath().normalize();
+            Files.createDirectories(tempReqDir);
 
-        String jobId = jobManager.startScan(reqDir, null, (rulesFiles != null && rulesFiles.length > 0) ? rulesDir : null);
-        return ResponseEntity.ok(Map.of("job_id", jobId));
+            List<Path> savedReqFiles = saveUploadedFiles(reqFiles, dirs.reqDir, true);
+            for (Path p : savedReqFiles) {
+                if (p == null) {
+                    continue;
+                }
+                Path dst = tempReqDir.resolve(p.getFileName().toString()).toAbsolutePath().normalize();
+                Files.copy(p, dst, StandardCopyOption.REPLACE_EXISTING);
+            }
+            if (rulesFiles != null && rulesFiles.length > 0) {
+                saveUploadedFiles(rulesFiles, dirs.rulesDir, false);
+            }
+            String jobId = jobManager.startScan(tempReqDir, dirs.outDir, dirs.rulesDir);
+            return ResponseEntity.ok(Map.of("job_id", jobId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage() == null ? String.valueOf(e) : e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", e.getMessage() == null ? String.valueOf(e) : e.getMessage()));
+        }
     }
 
     @GetMapping("/status/{jobId}")
@@ -789,7 +859,9 @@ public final class ApiController {
         return os != null && os.toLowerCase().contains("win");
     }
 
-    private static void saveUploadedFiles(MultipartFile[] files, Path targetDir, boolean isReq) throws IOException {
+    private static List<Path> saveUploadedFiles(MultipartFile[] files, Path targetDir, boolean isReq) throws IOException {
+        Path normalizedTarget = targetDir.toAbsolutePath().normalize();
+        List<Path> saved = new ArrayList<>();
         for (MultipartFile f : files) {
             if (f == null || f.isEmpty()) {
                 continue;
@@ -813,20 +885,22 @@ public final class ApiController {
                 }
             }
 
-            Path out = targetDir.resolve(baseName).toAbsolutePath().normalize();
-            if (!out.startsWith(targetDir.toAbsolutePath().normalize())) {
+            String datedName = appendTimestampSuffix(baseName);
+            Path out = normalizedTarget.resolve(datedName).toAbsolutePath().normalize();
+            if (!out.startsWith(normalizedTarget)) {
                 throw new IllegalArgumentException("文件名不合法: " + baseName);
             }
-
             if (Files.exists(out)) {
-                String unique = java.util.UUID.randomUUID().toString().replace("-", "") + "_" + baseName;
-                out = targetDir.resolve(unique).toAbsolutePath().normalize();
+                String unique = appendTimestampSuffix(stem(baseName) + "_" + randomHex(8) + suffixLower(baseName));
+                out = normalizedTarget.resolve(unique).toAbsolutePath().normalize();
             }
 
             try (InputStream in = f.getInputStream()) {
                 Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
             }
+            saved.add(out);
         }
+        return saved;
     }
 
     private static String baseNameOnly(String name) {
@@ -845,6 +919,26 @@ public final class ApiController {
             return "";
         }
         return name.substring(idx).toLowerCase();
+    }
+
+    private static String appendTimestampSuffix(String baseName) {
+        String b = baseNameOnly(baseName);
+        String ext = suffixLower(b);
+        String s = stem(b);
+        String ts = OffsetDateTime.now(ZoneId.systemDefault()).format(UPLOAD_TS);
+        return s + "_" + ts + ext;
+    }
+
+    private static String randomHex(int len) {
+        String s = Long.toHexString(Double.doubleToLongBits(Math.random())).replace("-", "");
+        if (s.length() >= len) {
+            return s.substring(0, len);
+        }
+        StringBuilder sb = new StringBuilder(s);
+        while (sb.length() < len) {
+            sb.append('0');
+        }
+        return sb.toString();
     }
 
     private static String toAbsolutePathString(String s) {

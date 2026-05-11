@@ -27,46 +27,66 @@
       <div class="spacer"></div>
 
       <div v-show="showConfig">
-        <div>
-          <label>待评审需求目录（推荐：选择文件夹上传）</label>
-          <div class="input-row">
-            <input :value="reqFolderDisplay" placeholder="请填写绝对路径（也可选择文件夹上传）" @input="onReqPathInput" />
-            <button class="btn" :disabled="isScanning" @click="pickReqFolder">选择文件夹</button>
-          </div>
-          <input ref="reqPicker" type="file" webkitdirectory directory multiple style="display:none" @change="onReqFolderChange" />
+        <div style="display:flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn" :class="openMode === 'local' ? 'btn-primary' : ''" :disabled="isScanning" @click="openMode = 'local'">本机目录</button>
+          <button class="btn" :class="openMode === 'upload' ? 'btn-primary' : ''" :disabled="isScanning" @click="openMode = 'upload'">上传文件</button>
         </div>
         <div class="spacer"></div>
-        <div>
-          <label>需求评审结果目录（可选，默认：work/output）</label>
-          <div class="input-row">
-            <input v-model="outDir" placeholder="请填写绝对路径（留空则使用默认输出目录）" />
-            <button class="btn" :disabled="isScanning" @click="toggleOutPicker">{{ outPickerOpen ? '收起' : '选择文件夹' }}</button>
-          </div>
-          <div v-if="outPickerOpen">
-            <div class="spacer"></div>
-            <div class="root-row">
-              <button v-for="r in roots" :key="r.name" class="btn" @click="openOutPath(r.path)">{{ r.name }}</button>
-              <button class="btn" @click="outGoUp">上一级</button>
-              <button class="btn btn-primary" @click="chooseOutDir">选择此目录</button>
+
+        <div v-if="openMode === 'local'">
+          <div>
+            <label>待评审需求目录（本机目录）</label>
+            <div class="input-row">
+              <input v-model="reqDir" placeholder="请填写绝对路径" />
             </div>
-            <div class="path-box mono">{{ outBrowsePath }}</div>
-            <div class="spacer"></div>
-            <div class="tree">
-              <div v-for="e in outEntries" :key="e.path" class="tree-row" @click="openOutPath(e.path)">
-                <div class="tree-name">{{ e.name }}</div>
+          </div>
+          <div class="spacer"></div>
+          <div>
+            <label>需求评审结果目录（可选，默认：work/output）</label>
+            <div class="input-row">
+              <input v-model="outDir" placeholder="请填写绝对路径（留空则使用默认输出目录）" />
+              <button class="btn" :disabled="isScanning" @click="toggleOutPicker">{{ outPickerOpen ? '收起' : '选择文件夹' }}</button>
+            </div>
+            <div v-if="outPickerOpen">
+              <div class="spacer"></div>
+              <div class="root-row">
+                <button v-for="r in roots" :key="r.name" class="btn" @click="openOutPath(r.path)">{{ r.name }}</button>
+                <button class="btn" @click="outGoUp">上一级</button>
+                <button class="btn btn-primary" @click="chooseOutDir">选择此目录</button>
               </div>
-              <div v-if="!outEntries.length" class="empty" style="padding: 12px;">无子目录</div>
+              <div class="path-box mono">{{ outBrowsePath }}</div>
+              <div class="spacer"></div>
+              <div class="tree">
+                <div v-for="e in outEntries" :key="e.path" class="tree-row" @click="openOutPath(e.path)">
+                  <div class="tree-name">{{ e.name }}</div>
+                </div>
+                <div v-if="!outEntries.length" class="empty" style="padding: 12px;">无子目录</div>
+              </div>
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <div>
+            <label>规则目录（可选，默认：work/quality）</label>
+            <div class="input-row">
+              <input v-model="rulesDir" placeholder="请填写绝对路径（留空则使用默认规则目录）" />
             </div>
           </div>
         </div>
-        <div class="spacer"></div>
-        <div>
-          <label>规则目录（可选，支持选择文件夹上传或手工输入服务器路径）</label>
-          <div class="input-row">
-            <input :value="rulesFolderDisplay" placeholder="请填写绝对路径（也可选择文件夹上传）" @input="onRulesPathInput" />
-            <button class="btn" :disabled="isScanning" @click="pickRulesFolder">选择文件夹</button>
+
+        <div v-else>
+          <div>
+            <label>上传待扫描文件（.docx/.doc）</label>
+            <div class="input-row">
+              <input :value="uploadSummary" readonly placeholder="未选择文件" />
+              <button class="btn" :disabled="isScanning" @click="pickReqFiles">选择文件</button>
+              <button class="btn" :disabled="isScanning || !reqFiles.length" @click="clearReqFiles">清空</button>
+            </div>
+            <input ref="reqPicker" type="file" multiple accept=".doc,.docx" style="display:none" @change="onReqFilesChange" />
           </div>
-          <input ref="rulesPicker" type="file" webkitdirectory directory multiple style="display:none" @change="onRulesFolderChange" />
+          <div class="spacer"></div>
+          <div class="mono" style="font-size: 12px; opacity: 0.85;">
+            上传文件会保存到默认 input 目录，扫描结果输出到默认 output 目录，文件名会追加时间戳避免覆盖
+          </div>
         </div>
       </div>
     </div>
@@ -144,12 +164,18 @@
           <option value="__ALL__">全部</option>
           <option v-for="name in fileOptions" :key="name" :value="name">{{ name }}</option>
         </select>
+        <button class="btn" :disabled="!displayedIssues.length" @click="collapseAllIssues">折叠全部</button>
+        <div v-if="displayedIssues.length" style="display:flex; gap: 8px; align-items:center;">
+          <button class="btn" :disabled="issuePage <= 1" @click="prevIssuePage">上一页</button>
+          <div class="mono" style="font-size: 12px;">第 {{ issuePage }} / {{ issueTotalPages }} 页（共 {{ displayedIssues.length }} 条）</div>
+          <button class="btn" :disabled="issuePage >= issueTotalPages" @click="nextIssuePage">下一页</button>
+        </div>
       </div>
       <div class="spacer"></div>
       <div class="issue-list-wrap">
         <div v-if="!displayedIssues.length" class="empty">暂无数据</div>
         <div v-else class="issue-list">
-          <div v-for="row in displayedIssues" :key="row.__key" class="issue-item" :data-key="row.__key" :class="row.__key === highlightKey ? 'issue-item-highlight' : ''">
+          <div v-for="row in pagedIssues" :key="row.__key" class="issue-item" :data-key="row.__key" :class="row.__key === highlightKey ? 'issue-item-highlight' : ''">
             <div class="issue-head">
               <div class="issue-title">
                 <button class="btn btn-sm" @click.stop="toggleIssue(row)">{{ isIssueOpen(row) ? '折叠' : '展开' }}</button>
@@ -209,7 +235,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const reqDir = ref('')
 const outDir = ref('')
@@ -217,13 +243,10 @@ const rulesDir = ref('')
 const showConfig = ref(true)
 const showProgress = ref(true)
 const showLogs = ref(true)
+const openMode = ref('local')
 
 const reqPicker = ref(null)
-const rulesPicker = ref(null)
 const reqFiles = ref([])
-const rulesFiles = ref([])
-const reqFolderLabel = ref('')
-const rulesFolderLabel = ref('')
 
 const jobId = ref('')
 const statusText = ref('')
@@ -238,6 +261,8 @@ const notifOpen = ref(false)
 const highlightKey = ref('')
 const issueOpen = ref({})
 const reviewBusy = ref({})
+const issuePage = ref(1)
+const issuePageSize = 10
 
 const outPickerOpen = ref(false)
 const roots = ref([])
@@ -310,6 +335,59 @@ const displayedIssues = computed(() => {
   }
   return rows
 })
+
+const issueTotalPages = computed(() => {
+  const total = displayedIssues.value.length
+  return Math.max(1, Math.ceil(total / issuePageSize))
+})
+
+const pagedIssues = computed(() => {
+  const total = displayedIssues.value.length
+  if (!total) return []
+  const maxPage = issueTotalPages.value
+  const page = Math.max(1, Math.min(issuePage.value, maxPage))
+  const start = (page - 1) * issuePageSize
+  return displayedIssues.value.slice(start, start + issuePageSize)
+})
+
+watch(() => selectedFile.value, () => {
+  issuePage.value = 1
+})
+
+watch(() => displayedIssues.value.length, () => {
+  issuePage.value = 1
+})
+
+watch(() => issueTotalPages.value, () => {
+  if (issuePage.value > issueTotalPages.value) {
+    issuePage.value = issueTotalPages.value
+  }
+  if (issuePage.value < 1) {
+    issuePage.value = 1
+  }
+})
+
+function prevIssuePage() {
+  if (issuePage.value > 1) {
+    issuePage.value -= 1
+  }
+}
+
+function nextIssuePage() {
+  if (issuePage.value < issueTotalPages.value) {
+    issuePage.value += 1
+  }
+}
+
+function collapseAllIssues() {
+  const next = { ...(issueOpen.value || {}) }
+  for (const row of (displayedIssues.value || [])) {
+    const key = String(row?.__key || '').trim()
+    if (!key) continue
+    next[key] = false
+  }
+  issueOpen.value = next
+}
 
 async function getJson(url) {
   const resp = await fetch(url)
@@ -543,20 +621,11 @@ function toggleIssue(row) {
   issueOpen.value = next
 }
 
-const reqFolderDisplay = computed(() => {
-  if (reqFiles.value && reqFiles.value.length) {
-    const label = reqFolderLabel.value ? (reqFolderLabel.value + ' ') : ''
-    return label + '(' + reqFiles.value.length + '个文件)'
-  }
-  return reqDir.value
-})
-
-const rulesFolderDisplay = computed(() => {
-  if (rulesFiles.value && rulesFiles.value.length) {
-    const label = rulesFolderLabel.value ? (rulesFolderLabel.value + ' ') : ''
-    return label + '(' + rulesFiles.value.length + '个文件)'
-  }
-  return rulesDir.value
+const uploadSummary = computed(() => {
+  const arr = reqFiles.value || []
+  if (!arr.length) return ''
+  if (arr.length === 1) return String(arr[0]?.name || '')
+  return String(arr.length) + ' 个文件'
 })
 
 async function loadCache() {
@@ -639,68 +708,40 @@ function chooseOutDir() {
   outPickerOpen.value = false
 }
 
-function pickReqFolder() {
+function pickReqFiles() {
   if (reqPicker.value) reqPicker.value.click()
 }
 
-function pickRulesFolder() {
-  if (rulesPicker.value) rulesPicker.value.click()
+function clearReqFiles() {
+  reqFiles.value = []
+  if (reqPicker.value) {
+    try {
+      reqPicker.value.value = ''
+    } catch (e) {
+    }
+  }
 }
 
-function onReqFolderChange(e) {
+function onReqFilesChange(e) {
   const files = Array.from(e?.target?.files || [])
   const filtered = files.filter((f) => {
     const n = String(f.name || '').toLowerCase()
     return n.endsWith('.docx') || n.endsWith('.doc')
   })
   reqFiles.value = filtered
-  reqFolderLabel.value = guessTopFolderName(files)
-  if (filtered.length) {
-    reqDir.value = ''
-  }
-}
-
-function onRulesFolderChange(e) {
-  const files = Array.from(e?.target?.files || [])
-  const filtered = files.filter((f) => {
-    const n = String(f.name || '').toLowerCase()
-    return n.endsWith('.md') || n.endsWith('.docx')
-  })
-  rulesFiles.value = filtered
-  rulesFolderLabel.value = guessTopFolderName(files)
-  if (filtered.length) {
-    rulesDir.value = ''
-  }
-}
-
-function onReqPathInput(ev) {
-  reqDir.value = String(ev?.target?.value || '')
-  if (reqDir.value.trim()) {
-    reqFiles.value = []
-    reqFolderLabel.value = ''
-  }
-}
-
-function onRulesPathInput(ev) {
-  rulesDir.value = String(ev?.target?.value || '')
-  if (rulesDir.value.trim()) {
-    rulesFiles.value = []
-    rulesFolderLabel.value = ''
-  }
-}
-
-function guessTopFolderName(files) {
-  const f = files && files.length ? files[0] : null
-  const rel = f && f.webkitRelativePath ? String(f.webkitRelativePath) : ''
-  if (!rel) return ''
-  const parts = rel.split('/')
-  return parts && parts.length ? parts[0] : ''
 }
 
 async function startScan() {
-  if (!reqFiles.value.length && !reqDir.value.trim()) {
-    statusText.value = '请选择需求文件夹，或手工输入服务器目录路径'
-    return
+  if (openMode.value === 'upload') {
+    if (!reqFiles.value.length) {
+      statusText.value = '请选择要上传的需求文件'
+      return
+    }
+  } else {
+    if (!reqDir.value.trim()) {
+      statusText.value = '请填写待评审需求目录'
+      return
+    }
   }
   showConfig.value = false
   statusText.value = '启动扫描...'
@@ -714,10 +755,9 @@ async function startScan() {
   knownIssueKeys.clear()
   try {
     let data
-    if (reqFiles.value.length) {
+    if (openMode.value === 'upload') {
       const fd = new FormData()
       for (const f of reqFiles.value) fd.append('req_files', f, f.name)
-      for (const rf of rulesFiles.value) fd.append('rules_files', rf, rf.name)
       data = await postForm('/api/scan_upload', fd)
     } else {
       data = await postJson('/api/scan', { req_dir: reqDir.value, out_dir: outDir.value, rules_dir: rulesDir.value })

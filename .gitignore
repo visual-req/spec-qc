@@ -19,6 +19,8 @@ work/logs/**
 !work/logs/.gitkeep
 work/revise/**
 !work/revise/.gitkeep
+work/uploads/**
+!work/uploads/.gitkeep
 
 !work/quality/
 work/quality/*
@@ -33,6 +35,8 @@ executable/work/logs/**
 !executable/work/logs/.gitkeep
 executable/work/revise/**
 !executable/work/revise/.gitkeep
+executable/work/uploads/**
+!executable/work/uploads/.gitkeep
 
 !executable/work/quality/
 executable/work/quality/*

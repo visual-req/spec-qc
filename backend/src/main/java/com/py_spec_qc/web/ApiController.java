@@ -1,0 +1,861 @@
+package com.py_spec_qc.web;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.py_spec_qc.core.JobManager;
+import com.py_spec_qc.core.config.AppConfig;
+import com.py_spec_qc.core.config.ConfigLoader;
+import com.py_spec_qc.core.model.FileProgress;
+import com.py_spec_qc.core.model.Issue;
+import com.py_spec_qc.core.model.JobStatusResponse;
+import com.py_spec_qc.core.model.RootEntry;
+import com.py_spec_qc.core.model.ScanRequest;
+import com.py_spec_qc.core.xlsx.XlsxIO;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
+import org.apache.xmlbeans.XmlCursor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+@RestController
+@RequestMapping("/api")
+public final class ApiController {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final DateTimeFormatter ISO_SECONDS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
+    private static final Object LOG_LOCK = new Object();
+    private static final Pattern HTML_TABLE = Pattern.compile("(?is)<table>\\s*(.*?)\\s*</table>");
+    private static final Pattern HTML_TR = Pattern.compile("(?is)<tr>\\s*(.*?)\\s*</tr>");
+    private static final Pattern HTML_TD = Pattern.compile("(?is)<(td|th)>\\s*(.*?)\\s*</\\1>");
+    private final JobManager jobManager;
+    private final XlsxIO xlsx = new XlsxIO();
+
+    private final Object cacheLock = new Object();
+    private final Path workDir;
+    private final Path cachePath;
+
+    public ApiController(JobManager jobManager) {
+        this.jobManager = jobManager;
+        AppConfig config = new ConfigLoader().load();
+        Path wd = (config != null && config.workDir != null)
+                ? config.workDir
+                : Path.of("").toAbsolutePath().normalize().resolve("work");
+        this.workDir = wd.toAbsolutePath().normalize();
+        this.cachePath = this.workDir.resolve("cache.yaml");
+    }
+
+    @GetMapping("/cache")
+    public Map<String, String> getCache() {
+        Map<String, String> data;
+        synchronized (cacheLock) {
+            data = loadCache();
+        }
+        String defaultReq = workDir.resolve("input").toString();
+        String defaultOut = workDir.resolve("output").toString();
+        String defaultRules = workDir.resolve("quality").toString();
+        String req = existingDirOr(data.get("req_dir"), defaultReq);
+        String out = existingDirOr(data.get("out_dir"), defaultOut);
+        String rules = existingDirOr(data.get("rules_dir"), defaultRules);
+        return Map.of(
+                "req_dir", req,
+                "out_dir", out,
+                "rules_dir", rules
+        );
+    }
+
+    private static String existingDirOr(String candidate, String fallback) {
+        String abs = toAbsolutePathString(candidate);
+        if (!abs.isBlank()) {
+            try {
+                if (Files.isDirectory(Path.of(abs))) {
+                    return abs;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return toAbsolutePathString(fallback);
+    }
+
+    @PostMapping("/scan")
+    public ResponseEntity<Map<String, String>> startScan(@RequestBody ScanRequest req) {
+        String reqDir = req == null ? "" : safeTrim(req.reqDir);
+        String outDir = req == null ? "" : safeTrim(req.outDir);
+        String rulesDir = req == null ? "" : safeTrim(req.rulesDir);
+        if (reqDir.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "req_dir is required"));
+        }
+        String absReqDir = toAbsolutePathString(reqDir);
+        String absOutDir = outDir.isBlank() ? "" : toAbsolutePathString(outDir);
+        String absRulesDir = rulesDir.isBlank() ? "" : toAbsolutePathString(rulesDir);
+        synchronized (cacheLock) {
+            try {
+                saveCache(absReqDir, absOutDir, absRulesDir);
+            } catch (Exception ignored) {
+            }
+        }
+        String jobId = jobManager.startScan(
+                Path.of(absReqDir).toAbsolutePath().normalize(),
+                absOutDir.isBlank() ? null : Path.of(absOutDir).toAbsolutePath().normalize(),
+                absRulesDir.isBlank() ? null : Path.of(absRulesDir).toAbsolutePath().normalize()
+        );
+        return ResponseEntity.ok(Map.of("job_id", jobId));
+    }
+
+    @PostMapping(value = "/scan_upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, String>> startScanUpload(
+            @RequestPart("req_files") MultipartFile[] reqFiles,
+            @RequestPart(name = "rules_files", required = false) MultipartFile[] rulesFiles
+    ) {
+        if (reqFiles == null || reqFiles.length == 0) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "req_files is required"));
+        }
+
+        Path base = workDir.resolve("uploads").toAbsolutePath().normalize();
+        String uploadId = java.util.UUID.randomUUID().toString().replace("-", "");
+        Path reqDir = base.resolve(uploadId).resolve("req").toAbsolutePath().normalize();
+        Path rulesDir = base.resolve(uploadId).resolve("rules").toAbsolutePath().normalize();
+
+        try {
+            Files.createDirectories(reqDir);
+            if (rulesFiles != null && rulesFiles.length > 0) {
+                Files.createDirectories(rulesDir);
+            }
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "创建上传目录失败"));
+        }
+
+        try {
+            saveUploadedFiles(reqFiles, reqDir, true);
+            if (rulesFiles != null && rulesFiles.length > 0) {
+                saveUploadedFiles(rulesFiles, rulesDir, false);
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage() == null ? String.valueOf(e) : e.getMessage()));
+        }
+
+        String jobId = jobManager.startScan(reqDir, null, (rulesFiles != null && rulesFiles.length > 0) ? rulesDir : null);
+        return ResponseEntity.ok(Map.of("job_id", jobId));
+    }
+
+    @GetMapping("/status/{jobId}")
+    public JobStatusResponse getStatus(@PathVariable("jobId") String jobId) {
+        return jobManager.getJob(jobId);
+    }
+
+    @GetMapping("/roots")
+    public Map<String, List<RootEntry>> listRoots() {
+        List<RootEntry> roots = new ArrayList<>();
+        try {
+            roots.add(new RootEntry("home", Path.of(System.getProperty("user.home")).toAbsolutePath().normalize().toString()));
+        } catch (Exception ignored) {
+        }
+        try {
+            roots.add(new RootEntry("cwd", Path.of("").toAbsolutePath().normalize().toString()));
+        } catch (Exception ignored) {
+        }
+        if (isWindows()) {
+            for (char c = 'A'; c <= 'Z'; c++) {
+                Path p = Path.of(c + ":\\");
+                if (Files.exists(p)) {
+                    roots.add(new RootEntry(c + ":\\", c + ":\\"));
+                }
+            }
+        } else {
+            roots.add(new RootEntry("/", "/"));
+        }
+        return Map.of("roots", roots);
+    }
+
+    @GetMapping("/fs")
+    public Map<String, Object> listDirs(@RequestParam(name = "path", required = false) String path) {
+        String p = safeTrim(path);
+        if (p.isBlank()) {
+            return Map.of("entries", List.of());
+        }
+        Path dir = Path.of(p).toAbsolutePath().normalize();
+        if (!Files.isDirectory(dir)) {
+            return Map.of("error", "not a directory");
+        }
+        List<Map<String, String>> entries = new ArrayList<>();
+        try {
+            Files.list(dir)
+                    .filter(Files::isDirectory)
+                    .sorted(Comparator.comparing(x -> x.getFileName().toString().toLowerCase()))
+                    .forEach(child -> entries.add(Map.of(
+                            "name", child.getFileName().toString(),
+                            "path", child.toAbsolutePath().normalize().toString()
+                    )));
+        } catch (IOException e) {
+            return Map.of("error", "failed to list directory");
+        }
+        Map<String, Object> out = new HashMap<>();
+        out.put("path", dir.toString());
+        out.put("entries", entries);
+        return out;
+    }
+
+    @GetMapping("/download")
+    public ResponseEntity<?> download(@RequestParam("job_id") String jobId, @RequestParam("file_name") String fileName) {
+        if (safeTrim(jobId).isBlank() || safeTrim(fileName).isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "job_id and file_name are required"));
+        }
+        JobStatusResponse job = jobManager.getJob(jobId);
+        String outputPath = findOutputPath(job, fileName);
+        if (outputPath.isBlank()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "output not found for file"));
+        }
+        Path p = Path.of(outputPath).toAbsolutePath().normalize();
+        if (!Files.isRegularFile(p)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "file not found"));
+        }
+        try {
+            ReviewFileData review = loadOrInitReview(job, fileName, p);
+            if (review != null && review.issues != null) {
+                List<Issue> filtered = review.issues.stream().filter(x -> x != null && !"rejected".equalsIgnoreCase(safeTrim(x.reviewStatus))).toList();
+                xlsx.writeIssues(p, fileName, filtered);
+            }
+        } catch (Exception ignored) {
+        }
+        byte[] data;
+        try {
+            data = Files.readAllBytes(p);
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", e.getMessage()));
+        }
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentLength(data.length);
+        headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"quality.xlsx\"");
+        return new ResponseEntity<>(data, headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/issues")
+    public ResponseEntity<?> issues(@RequestParam("job_id") String jobId, @RequestParam("file_name") String fileName) {
+        if (safeTrim(jobId).isBlank() || safeTrim(fileName).isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "job_id and file_name are required"));
+        }
+        JobStatusResponse job = jobManager.getJob(jobId);
+        List<Issue> inMem = findInMemoryIssues(job, fileName);
+        if (inMem != null) {
+            return ResponseEntity.ok(Map.of("issues", inMem));
+        }
+        String outputPath = findOutputPath(job, fileName);
+        if (outputPath.isBlank()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "output not found for file"));
+        }
+        Path xlsxPath = Path.of(outputPath).toAbsolutePath().normalize();
+        Path jsonPath = reviewJsonPath(xlsxPath);
+        if (Files.isRegularFile(jsonPath)) {
+            try {
+                ReviewFileData review = loadReview(jsonPath);
+                if (review != null && review.issues != null) {
+                    return ResponseEntity.ok(Map.of("issues", review.issues));
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        try {
+            List<Issue> issues = xlsx.readIssues(Path.of(outputPath));
+            return ResponseEntity.ok(Map.of("issues", issues));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/review/decision")
+    public ResponseEntity<?> reviewDecision(@RequestBody Map<String, String> body) {
+        long startedNs = System.nanoTime();
+        String jobId = safeTrim(body == null ? null : body.get("job_id"));
+        String fileName = safeTrim(body == null ? null : body.get("file_name"));
+        String seq = safeTrim(body == null ? null : body.get("seq"));
+        String action = safeTrim(body == null ? null : body.get("action")).toLowerCase();
+        String reqId = safeTrim(body == null ? null : body.get("req_id"));
+        if (jobId.isBlank() || fileName.isBlank() || seq.isBlank() || action.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "job_id/file_name/seq/action are required"));
+        }
+        if (!action.equals("accept") && !action.equals("reject")) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "action must be accept or reject"));
+        }
+        appendLog("reviewDecision start req_id=" + reqId + " job_id=" + jobId + " file=" + fileName + " seq=" + seq + " action=" + action);
+        JobStatusResponse job = jobManager.getJob(jobId);
+        String outputPath = findOutputPath(job, fileName);
+        if (outputPath.isBlank()) {
+            appendLog("reviewDecision output not found req_id=" + reqId + " job_id=" + jobId + " file=" + fileName + " seq=" + seq + " action=" + action + " elapsed_ms=" + elapsedMs(startedNs));
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "output not found for file"));
+        }
+        Path xlsxPath = Path.of(outputPath).toAbsolutePath().normalize();
+        ReviewFileData review;
+        try {
+            review = loadOrInitReview(job, fileName, xlsxPath);
+        } catch (Exception e) {
+            appendLog("reviewDecision load failed req_id=" + reqId + " job_id=" + jobId + " file=" + fileName + " seq=" + seq + " action=" + action + " elapsed_ms=" + elapsedMs(startedNs) + " err=" + (e.getMessage() == null ? String.valueOf(e) : e.getMessage()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", e.getMessage()));
+        }
+        if (review == null || review.issues == null) {
+            appendLog("reviewDecision review data not available req_id=" + reqId + " job_id=" + jobId + " file=" + fileName + " seq=" + seq + " action=" + action + " elapsed_ms=" + elapsedMs(startedNs));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "review data not available"));
+        }
+        Issue target = null;
+        for (Issue it : review.issues) {
+            if (it != null && safeTrim(it.seq).equals(seq)) {
+                target = it;
+                break;
+            }
+        }
+        if (target == null) {
+            appendLog("reviewDecision issue not found req_id=" + reqId + " job_id=" + jobId + " file=" + fileName + " seq=" + seq + " action=" + action + " elapsed_ms=" + elapsedMs(startedNs));
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "issue not found: " + seq));
+        }
+        target.reviewStatus = action.equals("accept") ? "accepted" : "rejected";
+        target.reviewUpdatedAt = nowIsoSeconds();
+
+        if (action.equals("accept")) {
+            appendLog("reviewDecision apply start req_id=" + reqId + " job_id=" + jobId + " file=" + fileName + " seq=" + seq);
+            String revised = applyIssueToDoc(review, fileName, target);
+            if (revised != null && !revised.isBlank()) {
+                review.revisedPath = revised;
+            }
+            appendLog("reviewDecision apply done req_id=" + reqId + " job_id=" + jobId + " file=" + fileName + " seq=" + seq + " revised=" + safeTrim(review.revisedPath));
+        }
+
+        try {
+            saveReview(reviewJsonPath(xlsxPath), review);
+        } catch (Exception e) {
+            appendLog("reviewDecision save review json failed req_id=" + reqId + " job_id=" + jobId + " file=" + fileName + " seq=" + seq + " action=" + action + " elapsed_ms=" + elapsedMs(startedNs) + " err=" + (e.getMessage() == null ? String.valueOf(e) : e.getMessage()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", e.getMessage()));
+        }
+
+        try {
+            List<Issue> filtered = review.issues.stream().filter(x -> x != null && !"rejected".equalsIgnoreCase(safeTrim(x.reviewStatus))).toList();
+            xlsx.writeIssues(xlsxPath, fileName, filtered);
+        } catch (Exception ignored) {
+        }
+
+        try {
+            updateInMemoryIssues(job, fileName, review.issues);
+        } catch (Exception ignored) {
+        }
+
+        appendLog("reviewDecision ok req_id=" + reqId + " job_id=" + jobId + " file=" + fileName + " seq=" + seq + " action=" + action + " revised=" + safeTrim(review.revisedPath) + " elapsed_ms=" + elapsedMs(startedNs));
+        return ResponseEntity.ok(Map.of(
+                "issues", review.issues,
+                "revised_path", safeTrim(review.revisedPath)
+        ));
+    }
+
+    @PostMapping("/client/log")
+    public ResponseEntity<?> clientLog(@RequestBody Map<String, String> body) {
+        String reqId = safeTrim(body == null ? null : body.get("req_id"));
+        String stage = safeTrim(body == null ? null : body.get("stage"));
+        String action = safeTrim(body == null ? null : body.get("action"));
+        String file = safeTrim(body == null ? null : body.get("file"));
+        String seq = safeTrim(body == null ? null : body.get("seq"));
+        String ok = safeTrim(body == null ? null : body.get("ok"));
+        String err = safeTrim(body == null ? null : body.get("error"));
+        if (err.length() > 500) {
+            err = err.substring(0, 500);
+        }
+        appendLog("clientLog req_id=" + reqId + " stage=" + stage + " action=" + action + " file=" + file + " seq=" + seq + " ok=" + ok + " err=" + err);
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    private static final class ReviewFileData {
+        @JsonProperty("file_name")
+        public String fileName;
+        @JsonProperty("source_path")
+        public String sourcePath;
+        @JsonProperty("revised_path")
+        public String revisedPath;
+        @JsonProperty("issues")
+        public List<Issue> issues = new ArrayList<>();
+    }
+
+    private static ReviewFileData loadReview(Path jsonPath) throws IOException {
+        ReviewFileData raw = MAPPER.readValue(Files.readString(jsonPath, StandardCharsets.UTF_8), ReviewFileData.class);
+        if (raw == null) {
+            return null;
+        }
+        ReviewFileData out = new ReviewFileData();
+        out.fileName = safeTrim(raw.fileName);
+        out.sourcePath = safeTrim(raw.sourcePath);
+        out.revisedPath = safeTrim(raw.revisedPath);
+        out.issues = raw.issues == null ? new ArrayList<>() : raw.issues;
+        return out;
+    }
+
+    private static void saveReview(Path jsonPath, ReviewFileData review) throws IOException {
+        Files.createDirectories(jsonPath.getParent());
+        String json = MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(Map.of(
+                "file_name", safeTrim(review == null ? null : review.fileName),
+                "source_path", safeTrim(review == null ? null : review.sourcePath),
+                "revised_path", safeTrim(review == null ? null : review.revisedPath),
+                "issues", (review == null || review.issues == null) ? List.of() : review.issues
+        ));
+        Files.writeString(jsonPath, json, StandardCharsets.UTF_8);
+    }
+
+    private ReviewFileData loadOrInitReview(JobStatusResponse job, String fileName, Path xlsxPath) throws IOException {
+        Path jsonPath = reviewJsonPath(xlsxPath);
+        if (Files.isRegularFile(jsonPath)) {
+            return loadReview(jsonPath);
+        }
+        ReviewFileData review = new ReviewFileData();
+        review.fileName = safeTrim(fileName);
+        review.sourcePath = "";
+        review.revisedPath = "";
+        List<Issue> inMem = findInMemoryIssues(job, fileName);
+        if (inMem != null) {
+            review.issues = inMem;
+        } else if (Files.isRegularFile(xlsxPath)) {
+            review.issues = xlsx.readIssues(xlsxPath);
+        } else {
+            review.issues = new ArrayList<>();
+        }
+        for (Issue it : review.issues) {
+            if (it == null) {
+                continue;
+            }
+            if (safeTrim(it.reviewStatus).isBlank()) {
+                it.reviewStatus = "pending";
+            }
+            if (safeTrim(it.reviewUpdatedAt).isBlank()) {
+                it.reviewUpdatedAt = nowIsoSeconds();
+            }
+        }
+        saveReview(jsonPath, review);
+        return review;
+    }
+
+    private static Path reviewJsonPath(Path xlsxPath) {
+        Path p = xlsxPath.toAbsolutePath().normalize();
+        String name = p.getFileName().toString();
+        if (name.toLowerCase().endsWith(".xlsx")) {
+            name = name.substring(0, name.length() - 5) + ".review.json";
+        } else {
+            name = name + ".review.json";
+        }
+        return p.getParent().resolve(name);
+    }
+
+    private String applyIssueToDoc(ReviewFileData review, String fileName, Issue issue) {
+        String src = safeTrim(review == null ? null : review.sourcePath);
+        if (src.isBlank()) {
+            return "";
+        }
+        Path source = Path.of(src).toAbsolutePath().normalize();
+        if (!Files.isRegularFile(source) || !source.getFileName().toString().toLowerCase().endsWith(".docx")) {
+            return "";
+        }
+        Path reviseDir = workDir.resolve("revise").toAbsolutePath().normalize();
+        try {
+            Files.createDirectories(reviseDir);
+        } catch (IOException e) {
+            return "";
+        }
+        String outName = stem(fileName) + "-revise.docx";
+        Path revised = reviseDir.resolve(outName).toAbsolutePath().normalize();
+        try {
+            if (!Files.isRegularFile(revised)) {
+                Files.copy(source, revised, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            return "";
+        }
+        try (InputStream in = Files.newInputStream(revised); XWPFDocument doc = new XWPFDocument(in)) {
+            XWPFParagraph anchor = findAnchorParagraph(doc, safeTrim(issue.evidenceExcerpt), safeTrim(issue.evidenceParagraph));
+            XmlCursor cursor = null;
+            if (anchor != null) {
+                cursor = anchor.getCTP().newCursor();
+                cursor.toEndToken();
+            }
+
+            XWPFParagraph p1 = (cursor == null) ? doc.createParagraph() : doc.insertNewParagraph(cursor);
+            XWPFRun r1 = p1.createRun();
+            r1.setBold(true);
+            r1.setText("【建议修订 #" + safeTrim(issue.seq) + "】" + safeTrim(issue.category));
+
+            XWPFParagraph p2 = doc.createParagraph();
+            p2.createRun().setText("位置：页号=" + safeTrim(issue.evidencePage) + "；章节=" + safeTrim(issue.evidenceSection));
+
+            XWPFParagraph p3 = doc.createParagraph();
+            p3.createRun().setText("问题描述：" + safeTrim(issue.description));
+
+            String para = safeTrim(issue.evidenceParagraph);
+            if (!para.isBlank()) {
+                XWPFParagraph p4 = doc.createParagraph();
+                p4.createRun().setText("内容摘录：" + para);
+            }
+
+            String suggestionHtml = safeTrim(issue.suggestionHtml);
+            List<List<List<String>>> tables = extractTables(suggestionHtml);
+            if (!tables.isEmpty()) {
+                XWPFParagraph p5 = doc.createParagraph();
+                XWPFRun r5 = p5.createRun();
+                r5.setBold(true);
+                r5.setText("建议表格：");
+                for (List<List<String>> t : tables) {
+                    XWPFTable tbl = doc.createTable(Math.max(1, t.size()), Math.max(1, maxCols(t)));
+                    fillTable(tbl, t);
+                    doc.createParagraph();
+                }
+            } else {
+                String sugText = safeTrim(issue.suggestion);
+                if (!sugText.isBlank()) {
+                    XWPFParagraph p5 = doc.createParagraph();
+                    XWPFRun r5 = p5.createRun();
+                    r5.setBold(true);
+                    r5.setText("建议：");
+                    for (String line : sugText.split("\n")) {
+                        XWPFParagraph pp = doc.createParagraph();
+                        pp.createRun().setText(line);
+                    }
+                }
+            }
+            try (java.io.OutputStream out = Files.newOutputStream(revised)) {
+                doc.write(out);
+            }
+            return revised.toString();
+        } catch (Exception e) {
+            appendLog("applyIssueToDoc failed file=" + fileName + " seq=" + safeTrim(issue == null ? null : issue.seq) + " err=" + (e.getMessage() == null ? String.valueOf(e) : e.getMessage()));
+            return "";
+        }
+    }
+
+    private static XWPFParagraph findAnchorParagraph(XWPFDocument doc, String excerpt, String paragraph) {
+        if (doc == null) {
+            return null;
+        }
+        String ex = safeTrim(excerpt);
+        if (!ex.isBlank()) {
+            for (XWPFParagraph p : doc.getParagraphs()) {
+                String t = safeTrim(p == null ? null : p.getText());
+                if (!t.isBlank() && t.contains(ex)) {
+                    return p;
+                }
+            }
+        }
+        String para = safeTrim(paragraph);
+        if (!para.isBlank()) {
+            String key = para.length() > 16 ? para.substring(0, 16) : para;
+            for (XWPFParagraph p : doc.getParagraphs()) {
+                String t = safeTrim(p == null ? null : p.getText());
+                if (!t.isBlank() && t.contains(key)) {
+                    return p;
+                }
+            }
+        }
+        List<XWPFParagraph> ps = doc.getParagraphs();
+        return ps == null || ps.isEmpty() ? null : ps.get(ps.size() - 1);
+    }
+
+    private static List<List<List<String>>> extractTables(String html) {
+        String raw = safeTrim(html);
+        if (raw.isBlank()) {
+            return List.of();
+        }
+        List<List<List<String>>> out = new ArrayList<>();
+        Matcher tm = HTML_TABLE.matcher(raw);
+        while (tm.find()) {
+            String tableInner = tm.group(1);
+            List<List<String>> rows = new ArrayList<>();
+            Matcher rm = HTML_TR.matcher(tableInner == null ? "" : tableInner);
+            while (rm.find()) {
+                String rowInner = rm.group(1);
+                List<String> cells = new ArrayList<>();
+                Matcher cm = HTML_TD.matcher(rowInner == null ? "" : rowInner);
+                while (cm.find()) {
+                    String cellInner = cm.group(2);
+                    cells.add(htmlToText(cellInner));
+                }
+                if (!cells.isEmpty()) {
+                    rows.add(cells);
+                }
+            }
+            if (!rows.isEmpty()) {
+                out.add(rows);
+            }
+        }
+        return out;
+    }
+
+    private static int maxCols(List<List<String>> rows) {
+        int m = 1;
+        for (List<String> r : rows) {
+            if (r != null) {
+                m = Math.max(m, r.size());
+            }
+        }
+        return m;
+    }
+
+    private static void fillTable(XWPFTable tbl, List<List<String>> rows) {
+        if (tbl == null) {
+            return;
+        }
+        int rCount = tbl.getNumberOfRows();
+        int cols = rCount > 0 ? tbl.getRow(0).getTableCells().size() : 1;
+        for (int i = 0; i < rows.size(); i++) {
+            List<String> rr = rows.get(i);
+            XWPFTableRow tr = (i < rCount) ? tbl.getRow(i) : tbl.createRow();
+            for (int j = 0; j < cols; j++) {
+                XWPFTableCell cell = tr.getCell(j);
+                if (cell == null) {
+                    cell = tr.addNewTableCell();
+                }
+                String v = (rr != null && j < rr.size()) ? rr.get(j) : "";
+                cell.removeParagraph(0);
+                XWPFParagraph p = cell.addParagraph();
+                for (String line : safeTrim(v).split("\n")) {
+                    XWPFRun run = p.createRun();
+                    run.setText(line);
+                    run.addBreak();
+                }
+            }
+        }
+    }
+
+    private static String htmlToText(String html) {
+        String s = html == null ? "" : html;
+        s = s.replaceAll("(?i)<br\\s*/?>", "\n");
+        s = s.replaceAll("(?is)<[^>]+>", "");
+        s = s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&");
+        return s.trim();
+    }
+
+    private static String stem(String fileName) {
+        String n = safeTrim(fileName);
+        int idx = n.lastIndexOf('.');
+        return idx < 0 ? n : n.substring(0, idx);
+    }
+
+    private static String nowIsoSeconds() {
+        return OffsetDateTime.now(ZoneId.systemDefault()).withNano(0).format(ISO_SECONDS);
+    }
+
+    private static void updateInMemoryIssues(JobStatusResponse job, String fileName, List<Issue> issues) {
+        if (job == null || job.progress == null || job.progress.files == null || safeTrim(fileName).isBlank()) {
+            return;
+        }
+        for (FileProgress fp : job.progress.files) {
+            if (fp != null && safeTrim(fp.fileName).equals(fileName)) {
+                fp.issues = issues == null ? new ArrayList<>() : issues;
+                fp.issueCount = issues == null ? 0 : issues.size();
+                return;
+            }
+        }
+    }
+
+    private static void appendLog(String line) {
+        String text = nowIsoSeconds() + " " + String.valueOf(line) + "\n";
+        Path p = resolveLogPath();
+        synchronized (LOG_LOCK) {
+            try {
+                Files.createDirectories(p.getParent());
+                Files.writeString(p, text, StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private static long elapsedMs(long startedNs) {
+        return (System.nanoTime() - startedNs) / 1_000_000L;
+    }
+
+    private static Path resolveLogPath() {
+        String work = System.getenv("SPEC_QC_WORK_DIR");
+        if (work != null && !work.trim().isEmpty()) {
+            return Path.of(work.trim()).toAbsolutePath().normalize().resolve("logs").resolve("spec-qc.log");
+        }
+        try {
+            AppConfig config = new ConfigLoader().load();
+            if (config != null && config.workDir != null) {
+                return config.workDir.toAbsolutePath().normalize().resolve("logs").resolve("spec-qc.log");
+            }
+        } catch (Exception ignored) {
+        }
+        return Path.of("").toAbsolutePath().normalize().resolve("work").resolve("logs").resolve("spec-qc.log");
+    }
+
+    private static String findOutputPath(JobStatusResponse job, String fileName) {
+        if (job == null || job.progress == null || job.progress.files == null) {
+            return "";
+        }
+        for (FileProgress fp : job.progress.files) {
+            if (fp == null) {
+                continue;
+            }
+            if (fileName.equals(fp.fileName)) {
+                return fp.outputPath == null ? "" : fp.outputPath;
+            }
+        }
+        return "";
+    }
+
+    private static List<Issue> findInMemoryIssues(JobStatusResponse job, String fileName) {
+        if (job == null || job.progress == null || job.progress.files == null) {
+            return null;
+        }
+        for (FileProgress fp : job.progress.files) {
+            if (fp == null) {
+                continue;
+            }
+            if (fileName.equals(fp.fileName) && fp.issues != null) {
+                return fp.issues;
+            }
+        }
+        return null;
+    }
+
+    private Map<String, String> loadCache() {
+        if (!Files.isRegularFile(cachePath)) {
+            return Map.of();
+        }
+        String text;
+        try {
+            text = Files.readString(cachePath, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return Map.of();
+        }
+        Map<String, String> out = new HashMap<>();
+        for (String rawLine : text.split("\n")) {
+            String line = rawLine.trim();
+            if (line.isEmpty() || line.startsWith("#") || !line.contains(":")) {
+                continue;
+            }
+            String[] parts = line.split(":", 2);
+            String key = parts[0].trim();
+            String value = parts[1].trim();
+            if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+                value = value.substring(1, value.length() - 1);
+            }
+            out.put(key, value);
+        }
+        return out;
+    }
+
+    private void saveCache(String reqDir, String outDir, String rulesDir) throws IOException {
+        Files.createDirectories(cachePath.getParent());
+        Path tmp = cachePath.resolveSibling("cache.yaml.tmp");
+        String content = ""
+                + "req_dir: " + yamlQuote(reqDir) + "\n"
+                + "out_dir: " + yamlQuote(outDir) + "\n"
+                + "rules_dir: " + yamlQuote(rulesDir) + "\n";
+        Files.writeString(tmp, content, StandardCharsets.UTF_8);
+        Files.move(tmp, cachePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private static String yamlQuote(String s) {
+        String v = s == null ? "" : s;
+        v = v.replace("\\", "\\\\").replace("\"", "\\\"");
+        return "\"" + v + "\"";
+    }
+
+    private static String safeTrim(String s) {
+        return s == null ? "" : s.trim();
+    }
+
+    private static boolean isWindows() {
+        String os = System.getProperty("os.name");
+        return os != null && os.toLowerCase().contains("win");
+    }
+
+    private static void saveUploadedFiles(MultipartFile[] files, Path targetDir, boolean isReq) throws IOException {
+        for (MultipartFile f : files) {
+            if (f == null || f.isEmpty()) {
+                continue;
+            }
+            String original = f.getOriginalFilename();
+            String baseName = baseNameOnly(original);
+            if (baseName.isBlank()) {
+                continue;
+            }
+            String suf = suffixLower(baseName);
+            if (isReq) {
+                if (!suf.equals(".docx") && !suf.equals(".doc")) {
+                    throw new IllegalArgumentException("需求文件格式不支持: " + baseName);
+                }
+            } else {
+                if (!suf.equals(".md") && !suf.equals(".docx") && !suf.equals(".doc")) {
+                    throw new IllegalArgumentException("规则文件格式不支持: " + baseName);
+                }
+                if (suf.equals(".doc")) {
+                    throw new IllegalArgumentException("规则文件暂不支持 .doc，请转换为 .docx: " + baseName);
+                }
+            }
+
+            Path out = targetDir.resolve(baseName).toAbsolutePath().normalize();
+            if (!out.startsWith(targetDir.toAbsolutePath().normalize())) {
+                throw new IllegalArgumentException("文件名不合法: " + baseName);
+            }
+
+            if (Files.exists(out)) {
+                String unique = java.util.UUID.randomUUID().toString().replace("-", "") + "_" + baseName;
+                out = targetDir.resolve(unique).toAbsolutePath().normalize();
+            }
+
+            try (InputStream in = f.getInputStream()) {
+                Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+
+    private static String baseNameOnly(String name) {
+        if (name == null) {
+            return "";
+        }
+        String n = name.replace("\\", "/");
+        int idx = n.lastIndexOf('/');
+        String base = idx >= 0 ? n.substring(idx + 1) : n;
+        return base.trim();
+    }
+
+    private static String suffixLower(String name) {
+        int idx = name.lastIndexOf('.');
+        if (idx < 0) {
+            return "";
+        }
+        return name.substring(idx).toLowerCase();
+    }
+
+    private static String toAbsolutePathString(String s) {
+        String t = safeTrim(s);
+        if (t.isBlank()) {
+            return "";
+        }
+        Path p = Path.of(t);
+        if (!p.isAbsolute()) {
+            p = Path.of("").toAbsolutePath().normalize().resolve(p);
+        }
+        return p.toAbsolutePath().normalize().toString();
+    }
+}

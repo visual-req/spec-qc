@@ -1,0 +1,315 @@
+package com.py_spec_qc.core.ai;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+public final class DeepSeekClient {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
+    private static final Object LOG_LOCK = new Object();
+    private static final DateTimeFormatter ISO = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+
+    public String chatCompletions(String baseUrl, String apiKey, String model, List<Map<String, Object>> messages) {
+        String requestId = UUID.randomUUID().toString();
+        long startedNs = System.nanoTime();
+        String url = stripTrailingSlash(baseUrl) + "/chat/completions";
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("model", model);
+        payload.put("messages", messages);
+        payload.put("temperature", 0);
+        payload.put("response_format", Map.of("type", "json_object"));
+
+        byte[] body;
+        try {
+            body = MAPPER.writeValueAsBytes(payload);
+        } catch (IOException e) {
+            log(requestId, "serialize_error", Map.of(
+                    "url", safeUrl(url),
+                    "model", safeStr(model),
+                    "message_count", String.valueOf(messages == null ? 0 : messages.size()),
+                    "error", safeStr(e.getMessage()),
+                    "stack", stackTrace(e)
+            ));
+            throw new IllegalArgumentException("Failed to serialize DeepSeek request", e);
+        }
+
+        log(requestId, "request_start", Map.of(
+                "url", safeUrl(url),
+                "model", safeStr(model),
+                "message_count", String.valueOf(messages == null ? 0 : messages.size()),
+                "request_bytes", String.valueOf(body.length),
+                "sensitive_logging", String.valueOf(sensitiveLoggingEnabled()),
+                "messages_summary", summarizeMessages(messages)
+        ));
+
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(60))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .build();
+
+        HttpResponse<byte[]> resp;
+        try {
+            resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+            log(requestId, "request_error", Map.of(
+                    "url", safeUrl(url),
+                    "model", safeStr(model),
+                    "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
+                    "error", safeStr(e.getMessage()),
+                    "stack", stackTrace(e)
+            ));
+            throw new RuntimeException("DeepSeek API request failed: " + e.getMessage(), e);
+        }
+
+        int status = resp.statusCode();
+        byte[] respBody = resp.body() == null ? new byte[0] : resp.body();
+        String respText = new String(respBody, StandardCharsets.UTF_8);
+        log(requestId, "response_received", Map.of(
+                "url", safeUrl(url),
+                "status", String.valueOf(status),
+                "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
+                "response_bytes", String.valueOf(respBody.length),
+                "response_preview", previewResponse(respText)
+        ));
+        if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            log(requestId, "http_error", Map.of(
+                    "url", safeUrl(url),
+                    "status", String.valueOf(status),
+                    "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
+                    "response_preview", previewResponse(respText)
+            ));
+            throw new RuntimeException("DeepSeek API HTTPError: " + resp.statusCode() + ": " + respText);
+        }
+
+        JsonNode root;
+        try {
+            root = MAPPER.readTree(respText);
+        } catch (IOException e) {
+            log(requestId, "invalid_json", Map.of(
+                    "url", safeUrl(url),
+                    "status", String.valueOf(status),
+                    "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
+                    "response_preview", previewResponse(respText),
+                    "error", safeStr(e.getMessage())
+            ));
+            throw new RuntimeException("DeepSeek API invalid JSON response: " + respText, e);
+        }
+
+        JsonNode content = root.path("choices").path(0).path("message").path("content");
+        if (!content.isTextual() || content.asText().isBlank()) {
+            log(requestId, "missing_content", Map.of(
+                    "url", safeUrl(url),
+                    "status", String.valueOf(status),
+                    "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
+                    "root_preview", previewResponse(respText)
+            ));
+            throw new RuntimeException("DeepSeek API response missing choices[0].message.content");
+        }
+        String out = content.asText();
+        log(requestId, "request_done", Map.of(
+                "url", safeUrl(url),
+                "status", String.valueOf(status),
+                "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
+                "content_chars", String.valueOf(out.length()),
+                "content_preview", previewResponse(out)
+        ));
+        return out;
+    }
+
+    private static String stripTrailingSlash(String s) {
+        if (s == null) {
+            return "";
+        }
+        String t = s.trim();
+        while (t.endsWith("/")) {
+            t = t.substring(0, t.length() - 1);
+        }
+        return t;
+    }
+
+    private static boolean sensitiveLoggingEnabled() {
+        String v = System.getenv("SPEC_QC_LOG_SENSITIVE");
+        if (v == null) {
+            return false;
+        }
+        String t = v.trim().toLowerCase();
+        return t.equals("1") || t.equals("true") || t.equals("yes") || t.equals("y");
+    }
+
+    private static String summarizeMessages(List<Map<String, Object>> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return "[]";
+        }
+        boolean sensitive = sensitiveLoggingEnabled();
+        StringBuilder sb = new StringBuilder();
+        sb.append('[');
+        int limit = Math.min(6, messages.size());
+        for (int i = 0; i < limit; i++) {
+            Map<String, Object> m = messages.get(i);
+            String role = m == null ? "" : safeStr(m.get("role"));
+            String content = m == null ? "" : safeStr(m.get("content"));
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append("{role=").append(role);
+            sb.append(", chars=").append(content.length());
+            if (sensitive) {
+                sb.append(", preview=").append(previewResponse(content));
+            }
+            sb.append('}');
+        }
+        if (messages.size() > limit) {
+            sb.append(", ... total=").append(messages.size());
+        }
+        sb.append(']');
+        return sb.toString();
+    }
+
+    private static String safeStr(Object v) {
+        return v == null ? "" : String.valueOf(v);
+    }
+
+    private static String safeUrl(String url) {
+        if (url == null) {
+            return "";
+        }
+        return url.replaceAll("\\s+", "");
+    }
+
+    private static String previewResponse(String s) {
+        if (!sensitiveLoggingEnabled()) {
+            return "";
+        }
+        if (s == null) {
+            return "";
+        }
+        String t = s.replace("\r\n", "\n").replace("\n", "\\n");
+        int max = 600;
+        if (t.length() <= max) {
+            return t;
+        }
+        return t.substring(0, max) + "...(truncated,len=" + t.length() + ")";
+    }
+
+    private static long elapsedMs(long startedNs) {
+        return (System.nanoTime() - startedNs) / 1_000_000L;
+    }
+
+    private static void log(String requestId, String event, Map<String, String> fields) {
+        Path logFile = resolveLogFile();
+        StringBuilder sb = new StringBuilder();
+        sb.append(ISO.format(OffsetDateTime.now()));
+        sb.append(" deepseek");
+        sb.append(" request_id=").append(requestId == null ? "" : requestId);
+        sb.append(" event=").append(event == null ? "" : event);
+        if (fields != null && !fields.isEmpty()) {
+            for (Map.Entry<String, String> e : fields.entrySet()) {
+                String k = e.getKey() == null ? "" : e.getKey().trim();
+                if (k.isEmpty()) {
+                    continue;
+                }
+                String v = e.getValue() == null ? "" : e.getValue();
+                sb.append(' ').append(k).append('=').append(escapeLogValue(v));
+            }
+        }
+        sb.append('\n');
+        try {
+            synchronized (LOG_LOCK) {
+                Files.createDirectories(logFile.getParent());
+                Files.writeString(
+                        logFile,
+                        sb.toString(),
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.WRITE,
+                        StandardOpenOption.APPEND
+                );
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static String escapeLogValue(String v) {
+        String t = v == null ? "" : v;
+        t = t.replace("\r\n", "\n").replace("\n", "\\n");
+        if (t.contains(" ") || t.contains("=")) {
+            t = "\"" + t.replace("\"", "\\\"") + "\"";
+        }
+        int max = 2000;
+        if (t.length() > max) {
+            return t.substring(0, max) + "...(truncated,len=" + t.length() + ")";
+        }
+        return t;
+    }
+
+    private static String stackTrace(Throwable t) {
+        if (t == null) {
+            return "";
+        }
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        t.printStackTrace(pw);
+        pw.flush();
+        return sw.toString();
+    }
+
+    private static Path resolveLogFile() {
+        String logFile = System.getenv("SPEC_QC_LOG_FILE");
+        if (logFile != null && !logFile.trim().isEmpty()) {
+            return Path.of(logFile.trim()).toAbsolutePath().normalize();
+        }
+        String logDir = System.getenv("SPEC_QC_LOG_DIR");
+        if (logDir != null && !logDir.trim().isEmpty()) {
+            return Path.of(logDir.trim()).toAbsolutePath().normalize().resolve("large-model.log");
+        }
+        String workDir = System.getenv("SPEC_QC_WORK_DIR");
+        if (workDir != null && !workDir.trim().isEmpty()) {
+            return Path.of(workDir.trim()).toAbsolutePath().normalize().resolve("logs").resolve("large-model.log");
+        }
+        Path homeWork = Path.of(System.getProperty("user.home"), "工作", "work", "logs", "large-model.log").toAbsolutePath().normalize();
+        if (canUse(homeWork.getParent())) {
+            return homeWork;
+        }
+        Path cwdWork = Path.of("").toAbsolutePath().normalize().resolve("work").resolve("logs").resolve("large-model.log");
+        if (canUse(cwdWork.getParent())) {
+            return cwdWork;
+        }
+        return Path.of(System.getProperty("java.io.tmpdir"), "spec_qc_work", "logs", "large-model.log").toAbsolutePath().normalize();
+    }
+
+    private static boolean canUse(Path dir) {
+        try {
+            Files.createDirectories(dir);
+            Path probe = dir.resolve(".probe");
+            Files.writeString(probe, "ok", StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
+            Files.deleteIfExists(probe);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+}

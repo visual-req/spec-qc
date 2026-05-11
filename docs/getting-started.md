@@ -55,7 +55,7 @@ sh start.sh
 使用外部配置文件（推荐：避免把 token 写进代码库）：
 
 ```bash
-export SPEC_QC_CONFIG="$HOME/Desktop/spec-qc/config.yaml"
+export SPEC_QC_CONFIG="$HOME/spec-qc/config.yaml"
 export DEEPSEEK_API_KEY="..."
 cd executable
 sh start.sh

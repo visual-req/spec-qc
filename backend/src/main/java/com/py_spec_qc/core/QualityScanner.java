@@ -319,6 +319,15 @@ public final class QualityScanner {
                         if (looksLikeTimeRuleSortingFalsePositive(it)) {
                             continue;
                         }
+                        if (looksLikeCancelGoHomeCopyFalsePositive(it)) {
+                            continue;
+                        }
+                        if (looksLikeOrderReverseRuleVersionFalsePositive(it)) {
+                            continue;
+                        }
+                        if (looksLikeTimeRuleDauMauFalsePositive(it)) {
+                            continue;
+                        }
                         String key = fingerprint(it);
                         if (seen.add(key)) {
                             it.seq = String.valueOf(issueItems.size() + 1);
@@ -423,7 +432,7 @@ public final class QualityScanner {
                 + "6.1) 输出规模限制：issues 数组最多 12 条；每个字段（description/evidence_section/evidence_paragraph/evidence_excerpt/suggestion/related_standard）长度不超过 400 字符，超过则截断；suggestion_html 不超过 2000 字符。\n"
                 + "7) 关于排序：只要需求里出现“按<字段>升序/降序/倒序/从新到旧/最新优先”等语义，就视为已定义排序字段与顺序，不要判为“遗漏排序条件/顺序未定义”。例如：默认按政策提交日期降序排序。\n"
                 + "8) 关于时间表达：仅当语义涉及明确的时间单位/日期/时点/延迟/定时等，才按时间边界规则检查；仅表示操作先后（如“点击后/提交后/跳转后/完成后”）不视为时间表达。\n"
-                + "9) 关于“无”：若某段落内容明确为“无/暂无/不适用/N/A”（表示该项不存在或无需提供），不要对该段落提出改进建议，不要输出 issue。\n"
+                + "9) 关于“无”：若某段落内容明确为“无/暂无/不适用/不涉及/N/A”（表示该项不存在或无需提供），不要对该段落提出改进建议，不要输出 issue。\n"
                 + "10) 关于时间语义：仅当出现“本周/上周/下周/本月/上月/下月/今年/去年/最近/近日/近x天”等时间语义词，才适用“时间语义不清（本周）”类规则；像“默认按政策提交日期降序排序”“点击后跳转”等不属于该规则。\n"
                 + "11) 关于相对时间：仅当出现“x天/周/月/年 + 以内/之内/最近/近x天”等时间窗口语义时，才适用“相对时间表达不清（一个月之内/5天/一年）”类规则；像“按创建日期降序排序/按提交日期升序排序”属于排序规则，不属于相对时间。\n"
                 + "12) 关于边缘场景：仅当需求涉及实时刷新、频繁访问、强交互或多端并发等特征时，才按“易遗漏处理类：刷新/断网/多设备并发等边缘场景”检查；低频、纯展示或一次性流程不应强行套用本条。\n"
@@ -566,7 +575,7 @@ public final class QualityScanner {
         if (t.isEmpty()) {
             return false;
         }
-        if (t.equals("无") || t.equals("暂无") || t.equals("不适用")) {
+        if (t.equals("无") || t.equals("暂无") || t.equals("不适用") || t.equals("不涉及")) {
             return true;
         }
         return t.equals("n/a") || t.equals("na");
@@ -761,6 +770,92 @@ public final class QualityScanner {
             evidence = normalize(it.evidenceExcerpt);
         }
         return hasExplicitSort(evidence);
+    }
+
+    private static boolean looksLikeCancelGoHomeCopyFalsePositive(Issue it) {
+        if (it == null) {
+            return false;
+        }
+        String rel = normalize(it.relatedStandard);
+        if (rel.isBlank()) {
+            return false;
+        }
+        boolean maybeRule5 = rel.startsWith("5.") || (rel.contains("5.") && rel.contains("文案") && rel.contains("误解"));
+        if (!maybeRule5) {
+            return false;
+        }
+        String evidence = (normalize(it.evidenceExcerpt) + "\n" + normalize(it.evidenceParagraph)).trim();
+        if (evidence.isBlank()) {
+            return false;
+        }
+        if (!evidence.contains("取消")) {
+            return false;
+        }
+        if (!evidence.contains("返回")) {
+            return false;
+        }
+        if (!(evidence.contains("首页") || evidence.toLowerCase().contains("app首页"))) {
+            return false;
+        }
+        return evidence.contains("按钮");
+    }
+
+    private static boolean looksLikeOrderReverseRuleVersionFalsePositive(Issue it) {
+        if (it == null) {
+            return false;
+        }
+        String rel = normalize(it.relatedStandard);
+        if (rel.isBlank()) {
+            return false;
+        }
+        boolean maybeRule6 = rel.startsWith("6.") || (rel.contains("6.") && rel.contains("顺序") && rel.contains("倒序") && rel.contains("误解"));
+        if (!maybeRule6) {
+            return false;
+        }
+        String evidence = (normalize(it.evidenceExcerpt) + "\n" + normalize(it.evidenceParagraph)).trim();
+        if (evidence.isBlank()) {
+            return false;
+        }
+        boolean looksLikeVersionRule = evidence.contains("版本") && evidence.contains("版本号") && evidence.contains("+1") && evidence.contains("+0.1");
+        if (!looksLikeVersionRule) {
+            return false;
+        }
+        return evidence.contains("修订") || evidence.contains("规范") || evidence.contains("重大调整");
+    }
+
+    private static boolean looksLikeTimeRuleDauMauFalsePositive(Issue it) {
+        if (it == null) {
+            return false;
+        }
+        String rel = normalize(it.relatedStandard);
+        if (rel.isBlank()) {
+            return false;
+        }
+        boolean maybeTimeRule = rel.contains("时间") || rel.contains("本周") || rel.contains("近日") || rel.contains("近") || rel.contains("相对时间");
+        if (!maybeTimeRule) {
+            return false;
+        }
+        String evidence = (normalize(it.evidenceExcerpt) + "\n" + normalize(it.evidenceParagraph)).trim();
+        if (evidence.isBlank()) {
+            return false;
+        }
+        String e = evidence.toUpperCase();
+        boolean hasDauMau = e.contains("DAU") || e.contains("MAU") || evidence.contains("日活") || evidence.contains("月活");
+        if (!hasDauMau) {
+            return false;
+        }
+        boolean hasAmbiguousTimeWords = evidence.contains("本周")
+                || evidence.contains("上周")
+                || evidence.contains("下周")
+                || evidence.contains("本月")
+                || evidence.contains("上月")
+                || evidence.contains("下月")
+                || evidence.contains("今年")
+                || evidence.contains("去年")
+                || evidence.contains("近日")
+                || evidence.contains("最近")
+                || evidence.contains("近");
+        return !hasAmbiguousTimeWords;
     }
 
     private static boolean looksLikeTimeRuleSortingFalsePositive(Issue it) {

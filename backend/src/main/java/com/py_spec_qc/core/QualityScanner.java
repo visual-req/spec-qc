@@ -328,6 +328,15 @@ public final class QualityScanner {
                         if (looksLikeTimeRuleDauMauFalsePositive(it)) {
                             continue;
                         }
+                        if (looksLikeRoleMissingPermissionPopupFalsePositive(it)) {
+                            continue;
+                        }
+                        if (looksLikeNumericFormatRuleDefaultFalsePositive(it)) {
+                            continue;
+                        }
+                        if (looksLikeTypoRuleAckPacketFalsePositive(it)) {
+                            continue;
+                        }
                         String key = fingerprint(it);
                         if (seen.add(key)) {
                             it.seq = String.valueOf(issueItems.size() + 1);
@@ -856,6 +865,77 @@ public final class QualityScanner {
                 || evidence.contains("最近")
                 || evidence.contains("近");
         return !hasAmbiguousTimeWords;
+    }
+
+    private static boolean looksLikeRoleMissingPermissionPopupFalsePositive(Issue it) {
+        if (it == null) {
+            return false;
+        }
+        String rel = normalize(it.relatedStandard);
+        if (rel.isBlank()) {
+            return false;
+        }
+        boolean maybeRoleMissingRule = rel.startsWith("16.")
+                || rel.startsWith("17.")
+                || rel.contains("关键角色遗漏")
+                || rel.contains("角色遗漏");
+        if (!maybeRoleMissingRule) {
+            return false;
+        }
+        String evidence = (normalize(it.evidenceExcerpt) + "\n" + normalize(it.evidenceParagraph)).trim();
+        if (evidence.isBlank()) {
+            return false;
+        }
+        boolean looksLikePermissionPopup = evidence.contains("账户权限不足")
+                && (evidence.contains("开通") || evidence.contains("权限"))
+                && (evidence.contains("网点") || evidence.contains("视频坐席"));
+        return looksLikePermissionPopup;
+    }
+
+    private static boolean looksLikeNumericFormatRuleDefaultFalsePositive(Issue it) {
+        if (it == null) {
+            return false;
+        }
+        String rel = normalize(it.relatedStandard);
+        if (rel.isBlank()) {
+            return false;
+        }
+        boolean maybeRule21 = rel.startsWith("21.") || (rel.contains("21.") && rel.contains("小数") && rel.contains("显示格式"));
+        if (!maybeRule21) {
+            return false;
+        }
+        String evidence = (normalize(it.evidenceExcerpt) + "\n" + normalize(it.evidenceParagraph)).trim();
+        if (evidence.isBlank()) {
+            return false;
+        }
+        boolean saysDefaultRule = evidence.contains("默认") && (evidence.contains("小数") || evidence.contains("小数位") || evidence.contains("两位小数"));
+        boolean saysCalcDefined = evidence.contains("计算") || evidence.contains("规则") || evidence.contains("四舍五入") || evidence.contains("舍入");
+        return saysDefaultRule && saysCalcDefined;
+    }
+
+    private static boolean looksLikeTypoRuleAckPacketFalsePositive(Issue it) {
+        if (it == null) {
+            return false;
+        }
+        String rel = normalize(it.relatedStandard);
+        if (rel.isBlank()) {
+            return false;
+        }
+        boolean maybeRule79 = rel.startsWith("79.") || (rel.contains("79.") && rel.contains("错别字"));
+        if (!maybeRule79) {
+            return false;
+        }
+        String evidence = (normalize(it.evidenceExcerpt) + "\n" + normalize(it.evidenceParagraph)).trim();
+        if (evidence.isBlank()) {
+            return false;
+        }
+        if (!evidence.contains("发送")) {
+            return false;
+        }
+        if (!evidence.contains("应答报文")) {
+            return false;
+        }
+        return evidence.contains("同步") || evidence.contains("（同步）");
     }
 
     private static boolean looksLikeTimeRuleSortingFalsePositive(Issue it) {

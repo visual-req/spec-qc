@@ -841,7 +841,7 @@
 - When to use: Admin consoles, support/ops/review UIs, sensitive data query/export, permission changes
 - Related quality dimension: Completeness
 
-#### 108.1 Requirement omission: missing external dependencies/integrations
+#### 109. Requirement omission: missing external dependencies/integrations
 - Category: Requirement omission
 - Keywords: “dependency/integration/reconciliation/scheduled jobs/time zone/contract”
 - Description: Missing dependency analysis (systems/contracts/ownership/time zone/day cut) causes integration failure, inconsistency, or scheduled job errors
@@ -851,7 +851,7 @@
 - When to use: Cross-system integration, reconciliation/settlement, notification channels, batch/scheduled jobs, external data sources
 - Related quality dimension: Completeness
 
-#### 109. Requirement omission: missing boundaries/exceptions
+#### 110. Requirement omission: missing boundaries/exceptions
 - Category: Requirement omission
 - Keywords: “upper/lower/oversell/over-issue/retry/failure prompt/concurrency/hotkeys”
 - Description: Missing boundary and exception strategies causes incidents, bad data, and poor UX
@@ -861,7 +861,7 @@
 - When to use: Concurrency/resources/batch/files/notifications
 - Related quality dimension: Robustness
 
-#### 110. Insufficient stakeholder identification
+#### 111. Insufficient stakeholder identification
 - Category: Requirement omission
 - Keywords: “stakeholder/org/approval chain/ops/compliance”
 - Description: Missing key stakeholders causes missing permissions/flows/ops/compliance requirements
@@ -871,7 +871,7 @@
 - When to use: Enterprise systems, approval flows, cross-department collaboration
 - Related quality dimension: Completeness
 
-#### 111. Missing symmetric (forward/reverse) business flows
+#### 112. Missing symmetric (forward/reverse) business flows
 - Category: Requirement omission
 - Keywords: “symmetric flow/reverse flow/return/cancel/reversal”
 - Description: Only forward flow is covered; missing reverse/symmetric flow breaks closed-loop
@@ -881,7 +881,7 @@
 - When to use: Order/payment/approval/execution flows with cancel/rollback
 - Related quality dimension: Completeness
 
-#### 112. Redundant handling/content: complex and hard-to-maintain descriptions
+#### 113. Redundant handling/content: complex and hard-to-maintain descriptions
 - Category: Redundant handling/content
 - Keywords: “duplicate states/matrix explosion/long text/long sentences in table”
 - Description: Redundant states, long text, and matrix explosion make it hard to understand and maintain. Note: If the requirement does not even describe states, do not flag this as “redundant”; missing states belong to omission/modeling rules.
@@ -891,7 +891,7 @@
 - When to use: Complex conditions, complex flows, rule-engine requirements
 - Related quality dimension: Maintainability
 
-#### 113. Expression/format issues: non-standard formatting and mixed tools
+#### 114. Expression/format issues: non-standard formatting and mixed tools
 - Category: Expression/format
 - Keywords: “typos/formula parentheses/industry standard/UI standard/flowchart standard”
 - Description: Non-standard format or obscure expression causes misreading and implementation deviations
@@ -901,7 +901,7 @@
 - When to use: Document reviews, interaction and rule definitions
 - Related quality dimension: Standardization
 
-#### 114. Logic/data-model errors: inconsistent with business requirements
+#### 115. Logic/data-model errors: inconsistent with business requirements
 - Category: Logic/data-model error
 - Keywords: “auth/modeling/algorithm/counting/accounting”
 - Description: Logic or model inconsistent with business requirements makes subsequent implementation/acceptance wrong
@@ -911,7 +911,7 @@
 - When to use: Auth, billing/counting/finance/core algorithms
 - Related quality dimension: Correctness
 
-#### 115. Wrong use of description tools
+#### 116. Wrong use of description tools
 - Category: Wrong tool usage
 - Keywords: “flowchart/mind map/fishbone/tree/symbol standard”
 - Description: Inappropriate/mixed tools make structure unclear and non-standard
@@ -921,7 +921,7 @@
 - When to use: Structured/visual requirement expression
 - Related quality dimension: Standardization
 
-#### 116. Missing logging for auditability
+#### 117. Missing logging for auditability
 - Category: Missing logging
 - Keywords: “export/batch/upload/notification/send result/audit”
 - Description: For auditable scenarios (compliance/security/privacy/money/config changes), missing logs makes tracing impossible and fails audits. Do not force this for low-risk queries unless audit is required.
@@ -931,7 +931,7 @@
 - When to use: Money/compliance/privacy/security/config change/export/download/batch/integration; low-risk queries only when audit required
 - Related quality dimension: Traceability
 
-#### 117. Edge cases easily missed: refresh/offline/multi-device concurrency
+#### 118. Edge cases easily missed: refresh/offline/multi-device concurrency
 - Category: Easily missed handling
 - Keywords: “refresh/offline/retry/offline-mode/conflict/loading feedback/anti-double-submit/share/bookmark”
 - Description: For high-frequency/real-time/strong-interaction pages, missing refresh/offline/concurrency handling causes data loss/conflicts/poor UX. Do not force on low-frequency pure-display flows.
@@ -941,7 +941,7 @@
 - When to use: Real-time/high-frequency/strong-interaction web/mobile flows
 - Related quality dimension: Robustness
 
-#### 118. Duplicate descriptions: repeated controls/flows/copy increase maintenance cost
+#### 119. Duplicate descriptions: repeated controls/flows/copy increase maintenance cost
 - Category: Duplicate descriptions
 - Keywords: “common controls/common handling/message list/multilingual”
 - Description: Large-scale duplication creates redundancy and omission risk when changing; small phrase-level repetition is usually not flagged unless it creates conflicts.
@@ -951,7 +951,7 @@
 - When to use: Global interactions, common components, message copy and multilingual
 - Related quality dimension: Reusability
 
-#### 119. Phone/email change lacks security closed-loop, enabling account takeover
+#### 120. Phone/email change lacks security closed-loop, enabling account takeover
 - Category: Security risk omission
 - Keywords: “phone/email/rebind/recovery/impersonation/notification”
 - Description: If phone/email is used as login factor, notification channel or recovery credential, missing rebind/unbind/recovery verification and risk controls allows attackers to take over accounts via SMS/email hijack or social engineering.
@@ -968,7 +968,7 @@
 - When to use: ToC signup/login/recovery/change phone/email/unbind third-party/security setting changes; ToB when open external access or self-service rebind/recovery/funds exists
 - Related quality dimension: Security, Traceability
 
-#### 120. Device change/new device login lacks handling rules, enabling theft
+#### 121. Device change/new device login lacks handling rules, enabling theft
 - Category: Security risk omission
 - Keywords: “new device/device fingerprint/trusted device/session kick/anomalous login”
 - Description: In multi-device or device-change scenarios, missing new-device detection, trusted device binding, session governance, and anomalous login handling enables attackers to log in from new devices and perform sensitive actions.
@@ -985,7 +985,7 @@
 - When to use: ToC login/multi-session/device change/geo anomalies/pre-auth for funds; ToB only when external access/strict compliance
 - Related quality dimension: Security, Robustness, Traceability
 
-#### 121. Missing industry applicability declaration causes cross-industry false positives/negatives
+#### 122. Missing industry applicability declaration causes cross-industry false positives/negatives
 - Category: Rule governance gap
 - Keywords: “industry/scope/cross-industry/false positive/false negative”
 - Description: Not separating rules by industry (or missing “applicable industry” in rule files) causes bank/medical/e-commerce rules to be wrongly applied elsewhere, producing many false positives; or missing enabling correct industry rules causing false negatives.
@@ -999,7 +999,7 @@
 - When to use: Rule engines/quality scanning/multi-industry platforms
 - Related quality dimension: Correctness, Maintainability
 
-#### 122. Sensitive info display lacks masking/least-privilege, causing privacy/compliance risks
+#### 123. Sensitive info display lacks masking/least-privilege, causing privacy/compliance risks
 - Category: Security & privacy compliance gap
 - Keywords: “masking/least privilege/sensitive info/customer support”
 - Description: When requirements involve displaying sensitive information (contact, ID, address, account identifiers), missing role-based minimization and masking causes internal over-access, leakage and compliance risks. Especially for customer support, agents should not see full contact info; they should reach users via system capabilities (system calls/in-app messages).

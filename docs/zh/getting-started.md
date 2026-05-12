@@ -1,3 +1,5 @@
+[中文](getting-started.md) | [English](../en/getting-started.md) | [日本語](../ja/getting-started.md)
+
 ## Getting Started
 
 ### 1) 准备工作目录
@@ -36,7 +38,7 @@ init_work.bat
 
 工作目录结构说明见：
 
-- `docs/structure.md`
+- `structure.md`
 
 ### 2) 启动 Web UI
 
@@ -108,4 +110,4 @@ sh start.sh scan -req /path/to/req_dir
 
 排障见：
 
-- `docs/troubleshooting.md`
+- `troubleshooting.md`

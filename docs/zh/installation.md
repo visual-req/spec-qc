@@ -1,3 +1,5 @@
+[中文](installation.md) | [English](../en/installation.md) | [日本語](../ja/installation.md)
+
 ## 安装与环境准备
 
 ### 1) 运行环境（开箱即用 jar）

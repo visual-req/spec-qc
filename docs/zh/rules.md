@@ -1,3 +1,5 @@
+[中文](rules.md) | [English](../en/rules.md) | [日本語](../ja/rules.md)
+
 ## 如何新增/维护检查规则
 
 ### 规则文件放哪里

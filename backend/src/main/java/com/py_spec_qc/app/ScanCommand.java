@@ -20,7 +20,7 @@ public final class ScanCommand implements Runnable {
     @Override
     public void run() {
         try {
-            List<Path> outputs = new QualityScanner().scanReqDirPaths(reqDir, outDir, rulesDir, null);
+            List<Path> outputs = new QualityScanner().scanReqDirPaths(reqDir, outDir, rulesDir, "", null);
             for (Path p : outputs) {
                 System.out.println(p.toAbsolutePath());
             }
@@ -30,4 +30,3 @@ public final class ScanCommand implements Runnable {
         }
     }
 }
-

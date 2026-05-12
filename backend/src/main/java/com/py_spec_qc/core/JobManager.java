@@ -35,6 +35,40 @@ public final class JobManager {
     private static final int MAX_LOG_LINES = 200;
 
     public String startScan(Path reqDir, Path outDir, Path rulesDir) {
+        return startScan(reqDir, outDir, rulesDir, "");
+    }
+
+    private static String msgStart(int count, String lang) {
+        if ("en".equals(lang)) return "Found " + count + " files, starting scan...";
+        if ("ja".equals(lang)) return count + " 個のファイルが見つかりました。スキャンを開始します...";
+        return "找到 " + count + " 个文件，开始扫描...";
+    }
+
+    private static String msgScanning(String lang) {
+        if ("en".equals(lang)) return "Scanning...";
+        if ("ja".equals(lang)) return "スキャン中...";
+        return "扫描中...";
+    }
+
+    private static String msgDone(String lang) {
+        if ("en".equals(lang)) return "Scan completed!";
+        if ("ja".equals(lang)) return "スキャン完了！";
+        return "扫描完成！";
+    }
+
+    private static String msgFail(String error, String lang) {
+        if ("en".equals(lang)) return "Failed: " + error;
+        if ("ja".equals(lang)) return "失敗: " + error;
+        return "失败: " + error;
+    }
+
+    private static String msgWait(String lang) {
+        if ("en".equals(lang)) return "Waiting";
+        if ("ja".equals(lang)) return "待機中";
+        return "等待";
+    }
+
+    public String startScan(Path reqDir, Path outDir, Path rulesDir, String lang) {
         String jobId = UUID.randomUUID().toString().replace("-", "");
         List<String> files = listWordFileNames(reqDir);
         ProgressData progress = new ProgressData();
@@ -45,20 +79,20 @@ public final class JobManager {
         for (String name : files) {
             FileProgress fp = new FileProgress();
             fp.fileName = name;
-            fp.status = "等待";
+            fp.status = msgWait(lang);
             progress.files.add(fp);
         }
 
         JobStatusResponse resp = new JobStatusResponse();
         resp.status = "running";
-        resp.message = "开始扫描...";
+        resp.message = msgScanning(lang);
         resp.progress = progress;
-        appendLog(resp, "找到 " + files.size() + " 个文件，开始扫描...");
-        appendFileLog(resolveLogPath(), "job start job_id=" + jobId + " req_dir=" + (reqDir == null ? "" : reqDir.toAbsolutePath().normalize()) + " out_dir=" + (outDir == null ? "" : outDir.toAbsolutePath().normalize()) + " rules_dir=" + (rulesDir == null ? "" : rulesDir.toAbsolutePath().normalize()) + " file_count=" + files.size());
+        appendLog(resp, msgStart(files.size(), lang));
+        appendFileLog(resolveLogPath(), "job start job_id=" + jobId + " lang=" + (lang == null ? "" : lang.trim()) + " req_dir=" + (reqDir == null ? "" : reqDir.toAbsolutePath().normalize()) + " out_dir=" + (outDir == null ? "" : outDir.toAbsolutePath().normalize()) + " rules_dir=" + (rulesDir == null ? "" : rulesDir.toAbsolutePath().normalize()) + " file_count=" + files.size());
         jobs.put(jobId, resp);
         locks.put(jobId, new Object());
 
-        executor.submit(() -> runJob(jobId, reqDir, outDir, rulesDir));
+        executor.submit(() -> runJob(jobId, reqDir, outDir, rulesDir, lang));
         return jobId;
     }
 
@@ -73,17 +107,17 @@ public final class JobManager {
         return r;
     }
 
-    private void runJob(String jobId, Path reqDir, Path outDir, Path rulesDir) {
+    private void runJob(String jobId, Path reqDir, Path outDir, Path rulesDir, String lang) {
         Object lock = Objects.requireNonNullElseGet(locks.get(jobId), Object::new);
         try {
-            List<Path> outputs = scanner.scanReqDirPaths(reqDir, outDir, rulesDir, update -> {
+            List<Path> outputs = scanner.scanReqDirPaths(reqDir, outDir, rulesDir, lang, update -> {
                 synchronized (lock) {
                     JobStatusResponse resp = jobs.get(jobId);
                     if (resp == null || resp.progress == null) {
                         return;
                     }
                     mergeProgress(resp.progress, update);
-                    resp.message = "扫描中...";
+                    resp.message = msgScanning(lang);
                     appendLog(resp, formatLogLine(update));
                     resp.status = "running";
                 }
@@ -97,8 +131,8 @@ public final class JobManager {
                     resp.progress.status = "complete";
                 }
                 resp.status = "done";
-                resp.message = "扫描完成！";
-                appendLog(resp, "扫描完成！");
+                resp.message = msgDone(lang);
+                appendLog(resp, msgDone(lang));
                 appendFileLog(resolveLogPath(), "job done job_id=" + jobId + " outputs=" + (outputs == null ? 0 : outputs.size()));
                 List<String> outStr = new ArrayList<>();
                 for (Path p : outputs) {
@@ -118,7 +152,7 @@ public final class JobManager {
                 resp.progress.status = "failed";
                 resp.status = "error";
                 resp.error = e.getMessage() == null ? String.valueOf(e) : e.getMessage();
-                appendLog(resp, "失败: " + resp.error);
+                appendLog(resp, msgFail(resp.error, lang));
                 appendFileLog(resolveLogPath(), "job failed job_id=" + jobId + " err=" + resp.error);
                 appendFileLog(resolveLogPath(), stackTraceString(e));
             }

@@ -176,6 +176,7 @@ public final class ApiController {
         String reqDir = req == null ? "" : safeTrim(req.reqDir);
         String outDir = req == null ? "" : safeTrim(req.outDir);
         String rulesDir = req == null ? "" : safeTrim(req.rulesDir);
+        String lang = req == null ? "" : safeTrim(req.lang);
         if (reqDir.isBlank()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "req_dir is required"));
         }
@@ -191,7 +192,8 @@ public final class ApiController {
         String jobId = jobManager.startScan(
                 Path.of(absReqDir).toAbsolutePath().normalize(),
                 absOutDir.isBlank() ? null : Path.of(absOutDir).toAbsolutePath().normalize(),
-                absRulesDir.isBlank() ? null : Path.of(absRulesDir).toAbsolutePath().normalize()
+                absRulesDir.isBlank() ? null : Path.of(absRulesDir).toAbsolutePath().normalize(),
+                lang
         );
         return ResponseEntity.ok(Map.of("job_id", jobId));
     }
@@ -199,7 +201,8 @@ public final class ApiController {
     @PostMapping(value = "/scan_upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, String>> startScanUpload(
             @RequestPart("req_files") MultipartFile[] reqFiles,
-            @RequestPart(name = "rules_files", required = false) MultipartFile[] rulesFiles
+            @RequestPart(name = "rules_files", required = false) MultipartFile[] rulesFiles,
+            @RequestParam(name = "lang", required = false) String lang
     ) {
         if (reqFiles == null || reqFiles.length == 0) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "req_files is required"));
@@ -228,7 +231,7 @@ public final class ApiController {
             if (rulesFiles != null && rulesFiles.length > 0) {
                 saveUploadedFiles(rulesFiles, dirs.rulesDir, false);
             }
-            String jobId = jobManager.startScan(tempReqDir, dirs.outDir, dirs.rulesDir);
+            String jobId = jobManager.startScan(tempReqDir, dirs.outDir, dirs.rulesDir, safeTrim(lang));
             return ResponseEntity.ok(Map.of("job_id", jobId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage() == null ? String.valueOf(e) : e.getMessage()));
@@ -295,7 +298,7 @@ public final class ApiController {
     }
 
     @GetMapping("/download")
-    public ResponseEntity<?> download(@RequestParam("job_id") String jobId, @RequestParam("file_name") String fileName) {
+    public ResponseEntity<?> download(@RequestParam("job_id") String jobId, @RequestParam("file_name") String fileName, @RequestParam(name = "lang", required = false) String lang) {
         if (safeTrim(jobId).isBlank() || safeTrim(fileName).isBlank()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "job_id and file_name are required"));
         }
@@ -312,7 +315,7 @@ public final class ApiController {
             ReviewFileData review = loadOrInitReview(job, fileName, p);
             if (review != null && review.issues != null) {
                 List<Issue> filtered = review.issues.stream().filter(x -> x != null && !"rejected".equalsIgnoreCase(safeTrim(x.reviewStatus))).toList();
-                xlsx.writeIssues(p, fileName, filtered);
+                xlsx.writeIssues(p, fileName, filtered, lang);
             }
         } catch (Exception ignored) {
         }
@@ -325,7 +328,13 @@ public final class ApiController {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
         headers.setContentLength(data.length);
-        headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"quality.xlsx\"");
+        String outFileName = p.getFileName().toString();
+        try {
+            String encodedName = java.net.URLEncoder.encode(outFileName, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+            headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedName);
+        } catch (Exception e) {
+            headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"quality.xlsx\"");
+        }
         return new ResponseEntity<>(data, headers, HttpStatus.OK);
     }
 
@@ -427,7 +436,8 @@ public final class ApiController {
 
         try {
             List<Issue> filtered = review.issues.stream().filter(x -> x != null && !"rejected".equalsIgnoreCase(safeTrim(x.reviewStatus))).toList();
-            xlsx.writeIssues(xlsxPath, fileName, filtered);
+            String lang = safeTrim(body == null ? null : body.get("lang"));
+            xlsx.writeIssues(xlsxPath, fileName, filtered, lang);
         } catch (Exception ignored) {
         }
 

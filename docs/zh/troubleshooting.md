@@ -1,3 +1,5 @@
+[中文](troubleshooting.md) | [English](../en/troubleshooting.md) | [日本語](../ja/troubleshooting.md)
+
 ## 常见问题与排障
 
 ### 1) 扫描中途失败，如何定位原因

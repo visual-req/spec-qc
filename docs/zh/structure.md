@@ -1,3 +1,5 @@
+[中文](structure.md) | [English](../en/structure.md) | [日本語](../ja/structure.md)
+
 ## 项目结构与文件作用
 
 ### 根目录

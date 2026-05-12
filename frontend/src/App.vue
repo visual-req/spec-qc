@@ -2,15 +2,20 @@
   <div class="container">
     <div class="card">
       <div class="row">
-        <div class="title">AI需求质量扫描</div>
+        <div class="title">{{ t('app.title') }}</div>
         <div style="display:flex; gap: 8px;">
+          <select class="btn" v-model="lang" :disabled="isScanning" style="max-width: 120px;">
+            <option value="zh">中文</option>
+            <option value="ja">日本語</option>
+            <option value="en">English</option>
+          </select>
           <div class="notif-wrap">
             <button class="btn notif-btn" :disabled="!notifications.length" @click="toggleNotif">
-              提醒
+              {{ t('btn.notifications') }}
               <span v-if="notifications.length" class="badge">{{ notifications.length }}</span>
             </button>
             <div v-if="notifOpen" class="notif-panel">
-              <div v-if="!notifications.length" class="empty" style="padding: 10px;">暂无提醒</div>
+              <div v-if="!notifications.length" class="empty" style="padding: 10px;">{{ t('empty.noNotifications') }}</div>
               <div v-else>
                 <div v-for="n in notifications" :key="n.id" class="notif-item" @click="openNotif(n)">
                   <div class="notif-title">{{ n.title }}</div>
@@ -19,8 +24,8 @@
               </div>
             </div>
           </div>
-          <button class="btn" @click="showConfig = !showConfig">{{ showConfig ? '收起配置' : '展开配置' }}</button>
-          <button class="btn btn-primary" :disabled="isScanning" @click="startScan">开始扫描</button>
+          <button class="btn" @click="showConfig = !showConfig">{{ showConfig ? t('btn.hideConfig') : t('btn.showConfig') }}</button>
+          <button class="btn btn-primary" :disabled="isScanning" @click="startScan">{{ t('btn.startScan') }}</button>
         </div>
       </div>
 
@@ -28,64 +33,98 @@
 
       <div v-show="showConfig">
         <div style="display:flex; gap: 8px; flex-wrap: wrap;">
-          <button class="btn" :class="openMode === 'local' ? 'btn-primary' : ''" :disabled="isScanning" @click="openMode = 'local'">本机目录</button>
-          <button class="btn" :class="openMode === 'upload' ? 'btn-primary' : ''" :disabled="isScanning" @click="openMode = 'upload'">上传文件</button>
+          <button class="btn" :class="openMode === 'local' ? 'btn-primary' : ''" :disabled="isScanning" @click="openMode = 'local'">{{ t('btn.localDir') }}</button>
+          <button class="btn" :class="openMode === 'upload' ? 'btn-primary' : ''" :disabled="isScanning" @click="openMode = 'upload'">{{ t('btn.uploadFiles') }}</button>
         </div>
         <div class="spacer"></div>
 
         <div v-if="openMode === 'local'">
           <div>
-            <label>待评审需求目录（本机目录）</label>
+            <label>{{ t('label.reqDirLocal') }}</label>
             <div class="input-row">
-              <input v-model="reqDir" placeholder="请填写绝对路径" />
+              <input v-model="reqDir" :placeholder="t('placeholder.absPath')" />
+              <button class="btn" :disabled="isScanning" @click="togglePicker('reqDir')">{{ activePicker === 'reqDir' ? t('btn.collapse') : t('btn.chooseFolder') }}</button>
             </div>
-          </div>
-          <div class="spacer"></div>
-          <div>
-            <label>需求评审结果目录（可选，默认：work/output）</label>
-            <div class="input-row">
-              <input v-model="outDir" placeholder="请填写绝对路径（留空则使用默认输出目录）" />
-              <button class="btn" :disabled="isScanning" @click="toggleOutPicker">{{ outPickerOpen ? '收起' : '选择文件夹' }}</button>
-            </div>
-            <div v-if="outPickerOpen">
+            <div v-if="activePicker === 'reqDir'">
               <div class="spacer"></div>
               <div class="root-row">
-                <button v-for="r in roots" :key="r.name" class="btn" @click="openOutPath(r.path)">{{ r.name }}</button>
-                <button class="btn" @click="outGoUp">上一级</button>
-                <button class="btn btn-primary" @click="chooseOutDir">选择此目录</button>
+                <button v-for="r in roots" :key="r.name" class="btn" @click="openBrowsePath(r.path)">{{ r.name }}</button>
+                <button class="btn" @click="browseGoUp">{{ t('btn.up') }}</button>
+                <button class="btn btn-primary" @click="chooseBrowseDir">{{ t('btn.chooseThisDir') }}</button>
               </div>
-              <div class="path-box mono">{{ outBrowsePath }}</div>
+              <div class="path-box mono">{{ browsePath }}</div>
               <div class="spacer"></div>
               <div class="tree">
-                <div v-for="e in outEntries" :key="e.path" class="tree-row" @click="openOutPath(e.path)">
+                <div v-for="e in browseEntries" :key="e.path" class="tree-row" @click="openBrowsePath(e.path)">
                   <div class="tree-name">{{ e.name }}</div>
                 </div>
-                <div v-if="!outEntries.length" class="empty" style="padding: 12px;">无子目录</div>
+                <div v-if="!browseEntries.length" class="empty" style="padding: 12px;">{{ t('empty.noSubDirs') }}</div>
               </div>
             </div>
           </div>
           <div class="spacer"></div>
           <div>
-            <label>规则目录（可选，默认：work/quality）</label>
+            <label>{{ t('label.outDir') }}</label>
             <div class="input-row">
-              <input v-model="rulesDir" placeholder="请填写绝对路径（留空则使用默认规则目录）" />
+              <input v-model="outDir" :placeholder="t('placeholder.outDir')" />
+              <button class="btn" :disabled="isScanning" @click="togglePicker('outDir')">{{ activePicker === 'outDir' ? t('btn.collapse') : t('btn.chooseFolder') }}</button>
+            </div>
+            <div v-if="activePicker === 'outDir'">
+              <div class="spacer"></div>
+              <div class="root-row">
+                <button v-for="r in roots" :key="r.name" class="btn" @click="openBrowsePath(r.path)">{{ r.name }}</button>
+                <button class="btn" @click="browseGoUp">{{ t('btn.up') }}</button>
+                <button class="btn btn-primary" @click="chooseBrowseDir">{{ t('btn.chooseThisDir') }}</button>
+              </div>
+              <div class="path-box mono">{{ browsePath }}</div>
+              <div class="spacer"></div>
+              <div class="tree">
+                <div v-for="e in browseEntries" :key="e.path" class="tree-row" @click="openBrowsePath(e.path)">
+                  <div class="tree-name">{{ e.name }}</div>
+                </div>
+                <div v-if="!browseEntries.length" class="empty" style="padding: 12px;">{{ t('empty.noSubDirs') }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <div>
+            <label>{{ t('label.rulesDir') }}</label>
+            <div class="input-row">
+              <input v-model="rulesDir" :placeholder="t('placeholder.rulesDir')" />
+              <button class="btn" :disabled="isScanning" @click="togglePicker('rulesDir')">{{ activePicker === 'rulesDir' ? t('btn.collapse') : t('btn.chooseFolder') }}</button>
+            </div>
+            <div v-if="activePicker === 'rulesDir'">
+              <div class="spacer"></div>
+              <div class="root-row">
+                <button v-for="r in roots" :key="r.name" class="btn" @click="openBrowsePath(r.path)">{{ r.name }}</button>
+                <button class="btn" @click="browseGoUp">{{ t('btn.up') }}</button>
+                <button class="btn btn-primary" @click="chooseBrowseDir">{{ t('btn.chooseThisDir') }}</button>
+              </div>
+              <div class="path-box mono">{{ browsePath }}</div>
+              <div class="spacer"></div>
+              <div class="tree">
+                <div v-for="e in browseEntries" :key="e.path" class="tree-row" @click="openBrowsePath(e.path)">
+                  <div class="tree-name">{{ e.name }}</div>
+                </div>
+                <div v-if="!browseEntries.length" class="empty" style="padding: 12px;">{{ t('empty.noSubDirs') }}</div>
+              </div>
             </div>
           </div>
         </div>
 
         <div v-else>
           <div>
-            <label>上传待扫描文件（.docx/.doc）</label>
+            <label>{{ t('label.uploadFiles') }}</label>
             <div class="input-row">
-              <input :value="uploadSummary" readonly placeholder="未选择文件" />
-              <button class="btn" :disabled="isScanning" @click="pickReqFiles">选择文件</button>
-              <button class="btn" :disabled="isScanning || !reqFiles.length" @click="clearReqFiles">清空</button>
+              <input :value="uploadSummary" readonly :placeholder="t('placeholder.noFiles')" />
+              <button class="btn" :disabled="isScanning" @click="pickReqFiles">{{ t('btn.chooseFiles') }}</button>
+              <button class="btn" :disabled="isScanning || !reqFiles.length" @click="clearReqFiles">{{ t('btn.clear') }}</button>
             </div>
             <input ref="reqPicker" type="file" multiple accept=".doc,.docx" style="display:none" @change="onReqFilesChange" />
           </div>
           <div class="spacer"></div>
           <div class="mono" style="font-size: 12px; opacity: 0.85;">
-            上传文件会保存到默认 input 目录，扫描结果输出到默认 output 目录，文件名会追加时间戳避免覆盖
+            {{ t('hint.uploadExplain') }}
           </div>
         </div>
       </div>
@@ -95,18 +134,18 @@
 
     <div class="card">
       <div class="row">
-        <div style="font-size: 14px; font-weight: 600;">扫描汇总</div>
+        <div style="font-size: 14px; font-weight: 600;">{{ t('section.summary') }}</div>
         <div style="display:flex; gap: 8px;">
-          <button class="btn" @click="showProgress = !showProgress">{{ showProgress ? '收起列表' : '展开列表' }}</button>
-          <button class="btn" @click="showLogs = !showLogs">{{ showLogs ? '收起日志' : '展开日志' }}</button>
+          <button class="btn" @click="showProgress = !showProgress">{{ showProgress ? t('btn.collapseList') : t('btn.expandList') }}</button>
+          <button class="btn" @click="showLogs = !showLogs">{{ showLogs ? t('btn.collapseLogs') : t('btn.expandLogs') }}</button>
         </div>
       </div>
       <div class="spacer"></div>
       <div class="stats">
-        <div class="stat"><div class="k">总文件数</div><div class="v">{{ summary.totalFiles }}</div></div>
-        <div class="stat"><div class="k">已扫描文件数</div><div class="v">{{ summary.scannedFiles }}</div></div>
-        <div class="stat"><div class="k">发现问题总数</div><div class="v">{{ summary.totalIssues }}</div></div>
-        <div class="stat"><div class="k">扫描状态</div><div class="v">{{ scanStatusText }}</div></div>
+        <div class="stat"><div class="k">{{ t('stat.totalFiles') }}</div><div class="v">{{ summary.totalFiles }}</div></div>
+        <div class="stat"><div class="k">{{ t('stat.scannedFiles') }}</div><div class="v">{{ summary.scannedFiles }}</div></div>
+        <div class="stat"><div class="k">{{ t('stat.totalIssues') }}</div><div class="v">{{ summary.totalIssues }}</div></div>
+        <div class="stat"><div class="k">{{ t('stat.scanStatus') }}</div><div class="v">{{ scanStatusText }}</div></div>
       </div>
       <div v-show="showProgress">
         <div class="spacer"></div>
@@ -115,14 +154,14 @@
             <table>
               <thead>
                 <tr>
-                  <th>文件名</th>
-                  <th style="width: 90px;">状态</th>
-                  <th style="width: 170px;">开始时间</th>
-                  <th style="width: 170px;">结束时间</th>
-                  <th style="width: 110px;">总时长</th>
-                  <th style="width: 90px;">规则数</th>
-                  <th style="width: 90px;">问题数</th>
-                  <th style="width: 90px;">输出</th>
+                  <th>{{ t('table.fileName') }}</th>
+                  <th style="width: 90px;">{{ t('table.status') }}</th>
+                  <th style="width: 170px;">{{ t('table.startTime') }}</th>
+                  <th style="width: 170px;">{{ t('table.endTime') }}</th>
+                  <th style="width: 110px;">{{ t('table.duration') }}</th>
+                  <th style="width: 90px;">{{ t('table.ruleCount') }}</th>
+                  <th style="width: 90px;">{{ t('table.issueCount') }}</th>
+                  <th style="width: 90px;">{{ t('table.output') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -130,6 +169,9 @@
                   <td>{{ it.file_name }}</td>
                   <td>
                     <span class="tag" :class="statusTagClass(it.status)">{{ statusTagText(it.status) }}</span>
+                    <div v-if="failureReason(it.status)" class="mono" style="margin-top: 4px; font-size: 12px; opacity: 0.85;">
+                      {{ failureReason(it.status) }}
+                    </div>
                   </td>
                   <td>{{ formatLocalTime(it.started_at) }}</td>
                   <td>{{ formatLocalTime(it.ended_at) }}</td>
@@ -138,12 +180,12 @@
                   <td>{{ it.issue_count ?? 0 }}</td>
                   <td>
                     <button class="btn" :disabled="!it.output_path || !jobId" @click.stop="download(it.file_name)">
-                      下载
+                      {{ t('btn.download') }}
                     </button>
                   </td>
                 </tr>
                 <tr v-if="!progressFiles.length">
-                  <td colspan="8" class="empty">暂无数据</td>
+                  <td colspan="8" class="empty">{{ t('empty.noData') }}</td>
                 </tr>
               </tbody>
             </table>
@@ -157,71 +199,69 @@
     <div class="spacer"></div>
 
     <div class="card">
-      <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">问题查看</div>
+      <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">{{ t('section.issues') }}</div>
       <div style="display:flex; gap: 8px; align-items:center; flex-wrap: wrap;">
-        <label style="margin:0;">文件筛选</label>
+        <label style="margin:0;">{{ t('issue.filterFile') }}</label>
         <select class="btn" v-model="selectedFile" @change="onSelectedFileChange">
-          <option value="__ALL__">全部</option>
+          <option value="__ALL__">{{ t('btn.filterAll') }}</option>
           <option v-for="name in fileOptions" :key="name" :value="name">{{ name }}</option>
         </select>
-        <button class="btn" :disabled="!displayedIssues.length" @click="collapseAllIssues">折叠全部</button>
+        <button class="btn" :disabled="!displayedIssues.length" @click="collapseAllIssues">{{ t('btn.collapseAll') }}</button>
         <div v-if="displayedIssues.length" style="display:flex; gap: 8px; align-items:center;">
-          <button class="btn" :disabled="issuePage <= 1" @click="prevIssuePage">上一页</button>
-          <div class="mono" style="font-size: 12px;">第 {{ issuePage }} / {{ issueTotalPages }} 页（共 {{ displayedIssues.length }} 条）</div>
-          <button class="btn" :disabled="issuePage >= issueTotalPages" @click="nextIssuePage">下一页</button>
+          <button class="btn" :disabled="issuePage <= 1" @click="prevIssuePage">{{ t('btn.prevPage') }}</button>
+          <div class="mono" style="font-size: 12px;">{{ t('issue.pageInfo', { page: issuePage, total: issueTotalPages, count: displayedIssues.length }) }}</div>
+          <button class="btn" :disabled="issuePage >= issueTotalPages" @click="nextIssuePage">{{ t('btn.nextPage') }}</button>
         </div>
       </div>
       <div class="spacer"></div>
       <div class="issue-list-wrap">
-        <div v-if="!displayedIssues.length" class="empty">暂无数据</div>
+        <div v-if="!displayedIssues.length" class="empty">{{ t('empty.noData') }}</div>
         <div v-else class="issue-list">
           <div v-for="row in pagedIssues" :key="row.__key" class="issue-item" :data-key="row.__key" :class="row.__key === highlightKey ? 'issue-item-highlight' : ''">
             <div class="issue-head">
               <div class="issue-title">
-                <button class="btn btn-sm" @click.stop="toggleIssue(row)">{{ isIssueOpen(row) ? '折叠' : '展开' }}</button>
-                <span class="tag" :class="row.severity === '高' ? 'tag-red' : (row.severity === '中' ? 'tag-gold' : 'tag-blue')">
-                  {{ row.severity || '低' }}
-                </span>
+                <button class="btn btn-sm" @click.stop="toggleIssue(row)">{{ isIssueOpen(row) ? t('btn.collapse') : t('btn.expand') }}</button>
+                <span class="tag" :class="severityTagClass(row.severity)">{{ severityText(row.severity) }}</span>
                 <span style="margin-left:8px;">#{{ row.seq }} {{ row.category }}</span>
                 <span v-if="row.evidence_section" class="issue-section mono">{{ row.evidence_section }}</span>
               </div>
               <div style="display:flex; gap: 8px; align-items:center;">
                 <span class="tag" :class="reviewTagClass(row.review_status)">{{ reviewTagText(row.review_status) }}</span>
-                <button class="btn" :disabled="!jobId || !isFileReviewable(row.__file) || isReviewBusy(row)" @click="decide(row, 'reject')">{{ isReviewBusy(row) ? '处理中' : '拒绝' }}</button>
-                <button class="btn btn-primary" :disabled="!jobId || !isFileReviewable(row.__file) || row.review_status === 'accepted' || isReviewBusy(row)" @click="decide(row, 'accept')">{{ isReviewBusy(row) ? '处理中' : '接受' }}</button>
+                <button class="btn" :disabled="!jobId || !isFileReviewable(row.__file) || isReviewBusy(row)" @click="decide(row, 'reject')">{{ isReviewBusy(row) ? t('btn.processing') : t('btn.reject') }}</button>
+                <button class="btn btn-primary" :disabled="!jobId || !isFileReviewable(row.__file) || row.review_status === 'accepted' || isReviewBusy(row)" @click="decide(row, 'accept')">{{ isReviewBusy(row) ? t('btn.processing') : t('btn.accept') }}</button>
                 <div v-if="selectedFile === '__ALL__'" class="issue-file">{{ row.__file }}</div>
               </div>
             </div>
             <div class="issue-body" v-show="isIssueOpen(row)">
               <div class="issue-row">
                 <div class="kv inline">
-                  <div class="k">页号</div>
+                  <div class="k">{{ t('issue.page') }}</div>
                   <div class="v">{{ row.evidence_page }}</div>
                 </div>
                 <div class="kv inline">
-                  <div class="k">章节编号</div>
+                  <div class="k">{{ t('issue.section') }}</div>
                   <div class="v">{{ row.evidence_section }}</div>
                 </div>
               </div>
               <div class="issue-row">
                 <div class="kv inline">
-                  <div class="k">问题描述</div>
+                  <div class="k">{{ t('issue.description') }}</div>
                   <div class="v">{{ row.description }}</div>
                 </div>
                 <div class="kv inline">
-                  <div class="k">关联标准</div>
+                  <div class="k">{{ t('issue.relatedStandard') }}</div>
                   <div class="v mono">{{ row.related_standard }}</div>
                 </div>
               </div>
               <div class="issue-row one-col">
                 <div class="kv">
-                  <div class="k">内容摘录</div>
+                  <div class="k">{{ t('issue.evidence') }}</div>
                   <div class="v" v-html="renderEvidenceHtml(row)"></div>
                 </div>
               </div>
               <div class="issue-row one-col">
                 <div class="kv">
-                  <div class="k">建议</div>
+                  <div class="k">{{ t('issue.suggestion') }}</div>
                   <div class="v" v-html="renderSuggestionHtml(row)"></div>
                 </div>
               </div>
@@ -236,6 +276,302 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+const lang = ref(loadLang())
+
+const dict = {
+  zh: {
+    'app.title': 'AI需求质量扫描',
+    'btn.notifications': '提醒',
+    'btn.hideConfig': '收起配置',
+    'btn.showConfig': '展开配置',
+    'btn.startScan': '开始扫描',
+    'btn.localDir': '本机目录',
+    'btn.uploadFiles': '上传文件',
+    'btn.collapse': '收起',
+    'btn.expand': '展开',
+    'btn.chooseFolder': '选择文件夹',
+    'btn.up': '上一级',
+    'btn.chooseThisDir': '选择此目录',
+    'btn.chooseFiles': '选择文件',
+    'btn.clear': '清空',
+    'btn.collapseList': '收起列表',
+    'btn.expandList': '展开列表',
+    'btn.collapseLogs': '收起日志',
+    'btn.expandLogs': '展开日志',
+    'btn.download': '下载',
+    'btn.filterAll': '全部',
+    'btn.collapseAll': '折叠全部',
+    'btn.prevPage': '上一页',
+    'btn.nextPage': '下一页',
+    'btn.reject': '拒绝',
+    'btn.accept': '接受',
+    'btn.processing': '处理中',
+    'label.reqDirLocal': '待评审需求目录（本机目录）',
+    'label.outDir': '需求评审结果目录（可选，默认：work/output）',
+    'label.rulesDir': '规则目录（可选，默认：work/quality）',
+    'label.uploadFiles': '上传待扫描文件（.docx/.doc）',
+    'placeholder.absPath': '请填写绝对路径',
+    'placeholder.outDir': '请填写绝对路径（留空则使用默认输出目录）',
+    'placeholder.rulesDir': '请填写绝对路径（留空则使用默认规则目录）',
+    'placeholder.noFiles': '未选择文件',
+    'hint.uploadExplain': '上传文件会保存到默认 input 目录，扫描结果输出到默认 output 目录，文件名会追加时间戳避免覆盖',
+    'section.summary': '扫描汇总',
+    'section.issues': '问题查看',
+    'stat.totalFiles': '总文件数',
+    'stat.scannedFiles': '已扫描文件数',
+    'stat.totalIssues': '发现问题总数',
+    'stat.scanStatus': '扫描状态',
+    'table.fileName': '文件名',
+    'table.status': '状态',
+    'table.startTime': '开始时间',
+    'table.endTime': '结束时间',
+    'table.duration': '总时长',
+    'table.ruleCount': '规则数',
+    'table.issueCount': '问题数',
+    'table.output': '输出',
+    'empty.noNotifications': '暂无提醒',
+    'empty.noData': '暂无数据',
+    'empty.noSubDirs': '无子目录',
+    'issue.filterFile': '文件筛选',
+    'issue.pageInfo': '第 {page} / {total} 页（共 {count} 条）',
+    'issue.page': '页号',
+    'issue.section': '章节编号',
+    'issue.description': '问题描述',
+    'issue.relatedStandard': '关联标准',
+    'issue.evidence': '内容摘录',
+    'issue.suggestion': '建议',
+    'severity.high': '高',
+    'severity.medium': '中',
+    'severity.low': '低',
+    'tag.failed': '失败',
+    'tag.completed': '完成',
+    'tag.started': '开始',
+    'tag.scanning': '扫描中',
+    'tag.reviewPending': '待处理',
+    'tag.reviewAccepted': '已接受',
+    'tag.reviewRejected': '已拒绝',
+    'scan.status.running': '扫描中',
+    'scan.status.done': '已完成',
+    'scan.status.failed': '失败',
+    'scan.status.notStarted': '未开始',
+    'msg.pickUploadFiles': '请选择要上传的需求文件',
+    'msg.fillReqDir': '请填写待评审需求目录',
+    'msg.startingScan': '启动扫描...',
+    'msg.startFailed': '启动失败',
+    'msg.readDirFailedPrefix': '读取目录失败：',
+    'msg.revisedWrittenPrefix': '已写入修订版 Word：',
+    'msg.failPrefix': '失败: ',
+    'notif.newIssue': '发现新问题：{category}（{severity}）',
+    'time.h': '小时',
+    'time.m': '分钟',
+    'time.s': '秒',
+  },
+  en: {
+    'app.title': 'AI Spec Quality Scan',
+    'btn.notifications': 'Alerts',
+    'btn.hideConfig': 'Hide',
+    'btn.showConfig': 'Config',
+    'btn.startScan': 'Start',
+    'btn.localDir': 'Local Folder',
+    'btn.uploadFiles': 'Upload Files',
+    'btn.collapse': 'Collapse',
+    'btn.expand': 'Expand',
+    'btn.chooseFolder': 'Choose',
+    'btn.up': 'Up',
+    'btn.chooseThisDir': 'Use Folder',
+    'btn.chooseFiles': 'Choose Files',
+    'btn.clear': 'Clear',
+    'btn.collapseList': 'Hide List',
+    'btn.expandList': 'Show List',
+    'btn.collapseLogs': 'Hide Logs',
+    'btn.expandLogs': 'Show Logs',
+    'btn.download': 'Download',
+    'btn.filterAll': 'All',
+    'btn.collapseAll': 'Collapse All',
+    'btn.prevPage': 'Prev',
+    'btn.nextPage': 'Next',
+    'btn.reject': 'Reject',
+    'btn.accept': 'Accept',
+    'btn.processing': 'Working',
+    'label.reqDirLocal': 'Requirements Folder (Local)',
+    'label.outDir': 'Output Folder (Optional, default: work/output)',
+    'label.rulesDir': 'Rules Folder (Optional, default: work/quality)',
+    'label.uploadFiles': 'Upload Requirements (.docx/.doc)',
+    'placeholder.absPath': 'Absolute path',
+    'placeholder.outDir': 'Absolute path (leave empty for default)',
+    'placeholder.rulesDir': 'Absolute path (leave empty for default)',
+    'placeholder.noFiles': 'No file selected',
+    'hint.uploadExplain': 'Uploaded files are saved to the default input folder. Results are written to the default output folder. Filenames are suffixed with a timestamp to avoid overwrite.',
+    'section.summary': 'Summary',
+    'section.issues': 'Issues',
+    'stat.totalFiles': 'Total Files',
+    'stat.scannedFiles': 'Scanned Files',
+    'stat.totalIssues': 'Total Issues',
+    'stat.scanStatus': 'Status',
+    'table.fileName': 'File',
+    'table.status': 'Status',
+    'table.startTime': 'Start',
+    'table.endTime': 'End',
+    'table.duration': 'Duration',
+    'table.ruleCount': 'Rules',
+    'table.issueCount': 'Issues',
+    'table.output': 'Output',
+    'empty.noNotifications': 'No alerts',
+    'empty.noData': 'No data',
+    'empty.noSubDirs': 'No subfolders',
+    'issue.filterFile': 'File',
+    'issue.pageInfo': 'Page {page} / {total} (Total {count})',
+    'issue.page': 'Page',
+    'issue.section': 'Section',
+    'issue.description': 'Description',
+    'issue.relatedStandard': 'Related Standard',
+    'issue.evidence': 'Evidence',
+    'issue.suggestion': 'Suggestion',
+    'severity.high': 'High',
+    'severity.medium': 'Medium',
+    'severity.low': 'Low',
+    'tag.failed': 'Failed',
+    'tag.completed': 'Done',
+    'tag.started': 'Started',
+    'tag.scanning': 'Running',
+    'tag.reviewPending': 'Pending',
+    'tag.reviewAccepted': 'Accepted',
+    'tag.reviewRejected': 'Rejected',
+    'scan.status.running': 'Running',
+    'scan.status.done': 'Done',
+    'scan.status.failed': 'Failed',
+    'scan.status.notStarted': 'Not started',
+    'msg.pickUploadFiles': 'Please choose files to upload',
+    'msg.fillReqDir': 'Please enter the requirements folder',
+    'msg.startingScan': 'Starting...',
+    'msg.startFailed': 'Failed to start',
+    'msg.readDirFailedPrefix': 'Failed to read folder: ',
+    'msg.revisedWrittenPrefix': 'Revised Word written: ',
+    'msg.failPrefix': 'Failed: ',
+    'notif.newIssue': 'New issue: {category} ({severity})',
+    'time.h': 'h',
+    'time.m': 'm',
+    'time.s': 's',
+  },
+  ja: {
+    'app.title': 'AI要件品質スキャン',
+    'btn.notifications': '通知',
+    'btn.hideConfig': '設定を閉じる',
+    'btn.showConfig': '設定を開く',
+    'btn.startScan': 'スキャン開始',
+    'btn.localDir': 'ローカル',
+    'btn.uploadFiles': 'アップロード',
+    'btn.collapse': '折りたたむ',
+    'btn.expand': '展開',
+    'btn.chooseFolder': 'フォルダ選択',
+    'btn.up': '上へ',
+    'btn.chooseThisDir': 'このフォルダを使用',
+    'btn.chooseFiles': 'ファイル選択',
+    'btn.clear': 'クリア',
+    'btn.collapseList': '一覧を閉じる',
+    'btn.expandList': '一覧を開く',
+    'btn.collapseLogs': 'ログを閉じる',
+    'btn.expandLogs': 'ログを開く',
+    'btn.download': 'ダウンロード',
+    'btn.filterAll': 'すべて',
+    'btn.collapseAll': 'すべて折りたたむ',
+    'btn.prevPage': '前へ',
+    'btn.nextPage': '次へ',
+    'btn.reject': '却下',
+    'btn.accept': '承認',
+    'btn.processing': '処理中',
+    'label.reqDirLocal': '要件フォルダ（ローカル）',
+    'label.outDir': '出力フォルダ（任意、既定：work/output）',
+    'label.rulesDir': 'ルールフォルダ（任意、既定：work/quality）',
+    'label.uploadFiles': 'スキャン対象をアップロード（.docx/.doc）',
+    'placeholder.absPath': '絶対パスを入力',
+    'placeholder.outDir': '絶対パス（空なら既定）',
+    'placeholder.rulesDir': '絶対パス（空なら既定）',
+    'placeholder.noFiles': '未選択',
+    'hint.uploadExplain': 'アップロードしたファイルは既定の input に保存され、結果は既定の output に出力されます。上書き防止のためファイル名にタイムスタンプが付きます。',
+    'section.summary': 'サマリー',
+    'section.issues': '問題一覧',
+    'stat.totalFiles': '総ファイル数',
+    'stat.scannedFiles': 'スキャン済み',
+    'stat.totalIssues': '問題数合計',
+    'stat.scanStatus': '状態',
+    'table.fileName': 'ファイル',
+    'table.status': '状態',
+    'table.startTime': '開始',
+    'table.endTime': '終了',
+    'table.duration': '時間',
+    'table.ruleCount': 'ルール数',
+    'table.issueCount': '問題数',
+    'table.output': '出力',
+    'empty.noNotifications': '通知なし',
+    'empty.noData': 'データなし',
+    'empty.noSubDirs': 'サブフォルダなし',
+    'issue.filterFile': 'ファイル',
+    'issue.pageInfo': '{page} / {total} ページ（{count}件）',
+    'issue.page': 'ページ',
+    'issue.section': '章',
+    'issue.description': '内容',
+    'issue.relatedStandard': '関連ルール',
+    'issue.evidence': '抜粋',
+    'issue.suggestion': '提案',
+    'severity.high': '高',
+    'severity.medium': '中',
+    'severity.low': '低',
+    'tag.failed': '失敗',
+    'tag.completed': '完了',
+    'tag.started': '開始',
+    'tag.scanning': '実行中',
+    'tag.reviewPending': '未処理',
+    'tag.reviewAccepted': '承認済み',
+    'tag.reviewRejected': '却下済み',
+    'scan.status.running': '実行中',
+    'scan.status.done': '完了',
+    'scan.status.failed': '失敗',
+    'scan.status.notStarted': '未開始',
+    'msg.pickUploadFiles': 'アップロードするファイルを選択してください',
+    'msg.fillReqDir': '要件フォルダを入力してください',
+    'msg.startingScan': '開始しています...',
+    'msg.startFailed': '開始に失敗しました',
+    'msg.readDirFailedPrefix': 'フォルダの読み取りに失敗：',
+    'msg.revisedWrittenPrefix': '修正版Word：',
+    'msg.failPrefix': '失敗: ',
+    'notif.newIssue': '新しい問題：{category}（{severity}）',
+    'time.h': '時間',
+    'time.m': '分',
+    'time.s': '秒',
+  },
+}
+
+function t(key, vars) {
+  const table = dict[lang.value] || dict.zh
+  let s = String(table[key] ?? dict.zh[key] ?? key)
+  if (vars && typeof vars === 'object') {
+    for (const [k, v] of Object.entries(vars)) {
+      s = s.split('{' + k + '}').join(String(v))
+    }
+  }
+  return s
+}
+
+function loadLang() {
+  try {
+    const saved = localStorage.getItem('spec_qc_lang')
+    if (saved === 'zh' || saved === 'en' || saved === 'ja') return saved
+  } catch (e) {
+  }
+  const nav = String(navigator?.language || '').toLowerCase()
+  if (nav.startsWith('ja')) return 'ja'
+  if (nav.startsWith('zh')) return 'zh'
+  return 'en'
+}
+
+watch(() => lang.value, (v) => {
+  try {
+    localStorage.setItem('spec_qc_lang', String(v || ''))
+  } catch (e) {
+  }
+})
 
 const reqDir = ref('')
 const outDir = ref('')
@@ -264,10 +600,10 @@ const reviewBusy = ref({})
 const issuePage = ref(1)
 const issuePageSize = 10
 
-const outPickerOpen = ref(false)
+const activePicker = ref('')
 const roots = ref([])
-const outBrowsePath = ref('')
-const outEntries = ref([])
+const browsePath = ref('')
+const browseEntries = ref([])
 
 const isScanning = computed(() => !!pollTimer.value)
 
@@ -284,7 +620,7 @@ const summary = computed(() => {
   const totalIssues = files.reduce((acc, it) => acc + (Number(it.issue_count) || 0), 0)
   return {
     totalFiles: Number(p.total_files || files.length || 0),
-    scannedFiles: Number(p.scanned_files || files.filter((it) => String(it.status || '').includes('完成') || String(it.status || '').includes('失败')).length),
+    scannedFiles: Number(p.scanned_files || files.filter((it) => isDoneStatus(String(it.status || '')) || isFailedStatus(String(it.status || ''))).length),
     totalIssues,
   }
 })
@@ -306,15 +642,15 @@ const scanStatusText = computed(() => {
     const files = (p.files || progressFiles.value || [])
     const active = files.find((it) => {
       const s = String(it.status || '')
-      return s && !s.includes('完成') && !s.includes('失败')
+      return s && !isDoneStatus(s) && !isFailedStatus(s)
     })
     const detail = active ? String(active.status || '') : ''
-    return detail || '扫描中'
+    return detail || t('scan.status.running')
   }
-  if (st === 'complete' || st === 'done') return '已完成'
-  if (st === 'failed' || st === 'error') return '失败'
-  if (isScanning.value) return '扫描中'
-  return '未开始'
+  if (st === 'complete' || st === 'done') return t('scan.status.done')
+  if (st === 'failed' || st === 'error') return t('scan.status.failed')
+  if (isScanning.value) return t('scan.status.running')
+  return t('scan.status.notStarted')
 })
 
 const displayedIssues = computed(() => {
@@ -412,7 +748,8 @@ function formatLocalTime(iso) {
   if (!iso) return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleString()
+  const loc = lang.value === 'ja' ? 'ja-JP' : (lang.value === 'en' ? 'en-US' : 'zh-CN')
+  return d.toLocaleString(loc)
 }
 
 function formatDuration(ms) {
@@ -423,26 +760,57 @@ function formatDuration(ms) {
   const mm = Math.floor((totalSec % 3600) / 60)
   const ss = totalSec % 60
   const parts = []
-  if (hh) parts.push(hh + '小时')
-  if (mm) parts.push(mm + '分钟')
-  parts.push(ss + '秒')
-  return parts.join('')
+  if (hh) parts.push(hh + t('time.h'))
+  if (mm) parts.push(mm + t('time.m'))
+  parts.push(ss + t('time.s'))
+  return lang.value === 'en' ? parts.join(' ') : parts.join('')
+}
+
+function isFailedStatus(v) {
+  return v.includes('失败') || v.includes('Failed') || v.includes('Error') || v.includes('エラー')
+}
+
+function isDoneStatus(v) {
+  return v.includes('完成') || v.includes('Done') || v.includes('Complete') || v.includes('完了')
+}
+
+function isStartStatus(v) {
+  return v.includes('开始') || v.includes('Start') || v.includes('開始')
 }
 
 function statusTagClass(s) {
   const v = String(s || '')
-  if (v.includes('失败')) return 'tag-red'
-  if (v.includes('完成')) return 'tag-green'
-  if (v.includes('开始')) return 'tag-blue'
+  if (isFailedStatus(v)) return 'tag-red'
+  if (isDoneStatus(v)) return 'tag-green'
+  if (isStartStatus(v)) return 'tag-blue'
   return 'tag-gold'
 }
 
 function statusTagText(s) {
   const v = String(s || '')
-  if (v.includes('失败')) return '失败'
-  if (v.includes('完成')) return '完成'
-  if (v.includes('开始')) return '开始'
-  return '扫描中'
+  if (isFailedStatus(v)) return t('tag.failed')
+  if (isDoneStatus(v)) return t('tag.completed')
+  if (isStartStatus(v)) return t('tag.started')
+  return t('tag.scanning')
+}
+
+function failureReason(s) {
+  const v = String(s || '').trim()
+  if (!v) return ''
+  if (!isFailedStatus(v)) return ''
+  const seps = [':', '：', '-', '—']
+  for (const sep of seps) {
+    const idx = v.indexOf(sep)
+    if (idx > 0) {
+      const left = v.slice(0, idx).toLowerCase()
+      const right = v.slice(idx + 1).trim()
+      if (!right) continue
+      if (left.includes('失败') || left.includes('failed') || left.includes('error') || left.includes('失敗') || left.includes('エラー')) {
+        return right
+      }
+    }
+  }
+  return ''
 }
 
 function reviewTagClass(s) {
@@ -454,16 +822,42 @@ function reviewTagClass(s) {
 
 function reviewTagText(s) {
   const v = String(s || '').toLowerCase()
-  if (v === 'accepted') return '已接受'
-  if (v === 'rejected') return '已拒绝'
-  return '待处理'
+  if (v === 'accepted') return t('tag.reviewAccepted')
+  if (v === 'rejected') return t('tag.reviewRejected')
+  return t('tag.reviewPending')
+}
+
+function normalizeSeverity(raw) {
+  const v = String(raw || '').trim().toLowerCase()
+  if (!v) return 'low'
+  if (v === '高' || v === 'high' || v === 'h') return 'high'
+  if (v === '中' || v === 'medium' || v === 'm') return 'medium'
+  if (v === '低' || v === 'low' || v === 'l') return 'low'
+  if (v.includes('high')) return 'high'
+  if (v.includes('medium')) return 'medium'
+  if (v.includes('low')) return 'low'
+  return 'low'
+}
+
+function severityTagClass(raw) {
+  const lvl = normalizeSeverity(raw)
+  if (lvl === 'high') return 'tag-red'
+  if (lvl === 'medium') return 'tag-gold'
+  return 'tag-blue'
+}
+
+function severityText(raw) {
+  const lvl = normalizeSeverity(raw)
+  if (lvl === 'high') return t('severity.high')
+  if (lvl === 'medium') return t('severity.medium')
+  return t('severity.low')
 }
 
 function isFileReviewable(fileName) {
   const name = String(fileName || '').trim()
   if (!name) return false
   const st = String(fileStatusMap.value?.[name] || '')
-  return st.includes('完成') || st.includes('失败')
+  return isDoneStatus(st) || isFailedStatus(st)
 }
 
 async function decide(row, action) {
@@ -479,7 +873,7 @@ async function decide(row, action) {
   try {
     appendStatusLog(`[ui] request ${action} req_id=${reqId}`)
     sendClientLog({ req_id: reqId, stage: 'request_start', action, file, seq })
-    const data = await postJson('/api/review/decision', { job_id: jobId.value, file_name: file, seq, action, req_id: reqId })
+    const data = await postJson('/api/review/decision', { job_id: jobId.value, file_name: file, seq, action, req_id: reqId, lang: lang.value })
     appendStatusLog(`[ui] response ${action} req_id=${reqId} ok=${!data?.error}`)
     sendClientLog({ req_id: reqId, stage: 'response', action, file, seq, ok: data?.error ? 'false' : 'true', error: String(data?.error || '') })
     if (data?.error) {
@@ -490,7 +884,7 @@ async function decide(row, action) {
     issuesByFile.value = { ...(issuesByFile.value || {}), [file]: issues }
     const revised = String(data?.revised_path || '').trim()
     if (revised) {
-      statusText.value = '已写入修订版 Word：' + revised
+      statusText.value = t('msg.revisedWrittenPrefix') + revised
     }
   } catch (e) {
     statusText.value = String(e)
@@ -514,7 +908,9 @@ function pushNotifications(nextIssues) {
       const key = file + ':' + seq
       if (knownIssueKeys.has(key)) continue
       knownIssueKeys.add(key)
-      const title = '发现新问题：' + String(it?.category || '') + '（' + String(it?.severity || '') + '）'
+      const category = String(it?.category || '')
+      const severity = severityText(it?.severity)
+      const title = t('notif.newIssue', { category, severity })
       list.push({ id: key, file, seq, title })
     }
   }
@@ -625,6 +1021,8 @@ const uploadSummary = computed(() => {
   const arr = reqFiles.value || []
   if (!arr.length) return ''
   if (arr.length === 1) return String(arr[0]?.name || '')
+  if (lang.value === 'en') return String(arr.length) + ' files'
+  if (lang.value === 'ja') return String(arr.length) + ' ファイル'
   return String(arr.length) + ' 个文件'
 })
 
@@ -652,17 +1050,17 @@ async function ensureRootsLoaded() {
   }
 }
 
-async function openOutPath(p) {
+async function openBrowsePath(p) {
   const path = String(p || '').trim()
   if (!path) return
   try {
     const data = await getJson('/api/fs?path=' + encodeURIComponent(path))
     if (data?.error) {
-      statusText.value = '读取目录失败：' + String(data.error)
+      statusText.value = t('msg.readDirFailedPrefix') + String(data.error)
       return
     }
-    outBrowsePath.value = String(data?.path || path)
-    outEntries.value = Array.isArray(data?.entries) ? data.entries : []
+    browsePath.value = String(data?.path || path)
+    browseEntries.value = Array.isArray(data?.entries) ? data.entries : []
   } catch (e) {
     statusText.value = String(e)
   }
@@ -683,29 +1081,38 @@ function parentPath(p) {
   return t.slice(0, idx)
 }
 
-async function toggleOutPicker() {
-  outPickerOpen.value = !outPickerOpen.value
-  if (!outPickerOpen.value) return
+async function togglePicker(pickerName) {
+  if (activePicker.value === pickerName) {
+    activePicker.value = ''
+    return
+  }
+  activePicker.value = pickerName
   await ensureRootsLoaded()
-  const initial = outDir.value && outDir.value.trim()
-    ? outDir.value.trim()
-    : (roots.value && roots.value.length ? roots.value[0].path : '')
+  
+  let initial = ''
+  if (pickerName === 'outDir') initial = outDir.value
+  else if (pickerName === 'reqDir') initial = reqDir.value
+  else if (pickerName === 'rulesDir') initial = rulesDir.value
+
+  initial = initial && initial.trim() ? initial.trim() : (roots.value && roots.value.length ? roots.value[0].path : '')
   if (initial) {
-    await openOutPath(initial)
+    await openBrowsePath(initial)
   }
 }
 
-function outGoUp() {
-  const up = parentPath(outBrowsePath.value)
-  if (up && up !== outBrowsePath.value) {
-    openOutPath(up)
+function browseGoUp() {
+  const up = parentPath(browsePath.value)
+  if (up && up !== browsePath.value) {
+    openBrowsePath(up)
   }
 }
 
-function chooseOutDir() {
-  if (!outBrowsePath.value) return
-  outDir.value = outBrowsePath.value
-  outPickerOpen.value = false
+function chooseBrowseDir() {
+  if (!browsePath.value) return
+  if (activePicker.value === 'outDir') outDir.value = browsePath.value
+  else if (activePicker.value === 'reqDir') reqDir.value = browsePath.value
+  else if (activePicker.value === 'rulesDir') rulesDir.value = browsePath.value
+  activePicker.value = ''
 }
 
 function pickReqFiles() {
@@ -734,17 +1141,17 @@ function onReqFilesChange(e) {
 async function startScan() {
   if (openMode.value === 'upload') {
     if (!reqFiles.value.length) {
-      statusText.value = '请选择要上传的需求文件'
+      statusText.value = t('msg.pickUploadFiles')
       return
     }
   } else {
     if (!reqDir.value.trim()) {
-      statusText.value = '请填写待评审需求目录'
+      statusText.value = t('msg.fillReqDir')
       return
     }
   }
   showConfig.value = false
-  statusText.value = '启动扫描...'
+  statusText.value = t('msg.startingScan')
   progressFiles.value = []
   progressData.value = null
   selectedFile.value = '__ALL__'
@@ -758,13 +1165,14 @@ async function startScan() {
     if (openMode.value === 'upload') {
       const fd = new FormData()
       for (const f of reqFiles.value) fd.append('req_files', f, f.name)
+      fd.append('lang', lang.value)
       data = await postForm('/api/scan_upload', fd)
     } else {
-      data = await postJson('/api/scan', { req_dir: reqDir.value, out_dir: outDir.value, rules_dir: rulesDir.value })
+      data = await postJson('/api/scan', { req_dir: reqDir.value, out_dir: outDir.value, rules_dir: rulesDir.value, lang: lang.value })
     }
     jobId.value = data?.job_id || ''
     if (!jobId.value) {
-      statusText.value = data?.error || '启动失败'
+      statusText.value = data?.error || t('msg.startFailed')
       return
     }
     pollTimer.value = setInterval(pollStatus, 1000)
@@ -793,7 +1201,7 @@ async function pollStatus() {
       pushNotifications(nextIssues)
     }
     const logs = Array.isArray(data?.logs) ? data.logs : []
-    const base = (data?.error ? ('失败: ' + data.error) : (data?.message || ''))
+    const base = (data?.error ? (t('msg.failPrefix') + data.error) : (data?.message || ''))
     statusText.value = logs.length ? (logs.join('\n') + (base ? ('\n' + base) : '')) : base
     if (data?.status === 'done' || data?.status === 'error') {
       if (pollTimer.value) {
@@ -812,7 +1220,7 @@ async function pollStatus() {
 
 function download(fileName) {
   if (!jobId.value) return
-  const url = '/api/download?job_id=' + encodeURIComponent(jobId.value) + '&file_name=' + encodeURIComponent(fileName)
+  const url = '/api/download?job_id=' + encodeURIComponent(jobId.value) + '&file_name=' + encodeURIComponent(fileName) + '&lang=' + encodeURIComponent(lang.value)
   window.location.href = url
 }
 

@@ -4,6 +4,8 @@
 .DS_Store
 
 deploy*.sh
+run.sh
+executable/run.sh
 
 backend/target/
 frontend/node_modules/

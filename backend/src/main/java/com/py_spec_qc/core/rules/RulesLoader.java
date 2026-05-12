@@ -17,23 +17,24 @@ public final class RulesLoader {
     private static final Pattern RULE_BLOCK = Pattern.compile("^####\\s+.*?(?=^####\\s+|\\z)", Pattern.MULTILINE | Pattern.DOTALL);
     private static final Pattern APPLICABLE_INDUSTRY_LINE = Pattern.compile("(?m)^\\s*[-*]?\\s*适用行业\\s*[:：]\\s*(.+?)\\s*$");
 
-    public RulesData load(Path rulesDir) {
+    public RulesData load(Path rulesDir, String lang) {
+        String l = normalizeLang(lang);
         String requestedIndustry = normalizeIndustry(System.getenv("SPEC_QC_INDUSTRY"));
         if (rulesDir == null) {
             String text = loadBuiltinQualityStandard();
             List<String> rules = splitMarkdownToRules(text);
             int cnt = rules.size();
-            return new RulesData(rules, cnt > 0 ? cnt : 1);
+            return new RulesData(rules, cnt > 0 ? cnt : 1, l, "builtin");
         }
 
-        Path dir = rulesDir.toAbsolutePath().normalize();
+        Path dir = resolveLangRulesDir(rulesDir, l);
         if (!Files.isDirectory(dir)) {
-            throw new IllegalArgumentException("规则目录必须是已存在的目录: " + dir);
+            throw new IllegalArgumentException(msgRulesDirMustExist(l) + dir);
         }
 
         List<Path> ruleFiles;
         try {
-            ruleFiles = Files.list(dir)
+            List<Path> all = Files.list(dir)
                     .filter(Files::isRegularFile)
                     .filter(p -> {
                         String suf = suffixLower(p);
@@ -41,12 +42,13 @@ public final class RulesLoader {
                     })
                     .sorted(Comparator.comparing(p -> p.getFileName().toString().toLowerCase()))
                     .toList();
+            ruleFiles = filterFilesByLang(all, l);
         } catch (IOException e) {
-            throw new IllegalArgumentException("读取规则目录失败: " + dir, e);
+            throw new IllegalArgumentException(msgReadRulesDirFailed(l) + dir, e);
         }
 
         if (ruleFiles.isEmpty()) {
-            throw new IllegalArgumentException("规则目录下未找到规则文件: " + dir);
+            throw new IllegalArgumentException(msgNoRuleFiles(l) + dir);
         }
 
         int ruleCount = 0;
@@ -74,14 +76,14 @@ public final class RulesLoader {
         for (Path p : ruleFiles) {
             String suf = suffixLower(p);
             if (suf.equals(".doc")) {
-                throw new IllegalArgumentException("规则文件暂不支持 .doc，请转换为 .docx: " + p);
+                throw new IllegalArgumentException(msgDocNotSupported(l) + p);
             }
             String text;
             if (suf.equals(".md")) {
                 try {
                     text = Files.readString(p, StandardCharsets.UTF_8);
                 } catch (IOException e) {
-                    throw new IllegalArgumentException("读取规则文件失败: " + p, e);
+                    throw new IllegalArgumentException(msgReadRuleFileFailed(l) + p, e);
                 }
 
                 if (!shouldIncludeByIndustry(text, requestedIndustry, hasGenericMd, hasIndustrySpecificMd, ruleFiles.size())) {
@@ -93,16 +95,16 @@ public final class RulesLoader {
                     mdRules = List.of(text == null ? "" : text);
                 }
                 for (String r : mdRules) {
-                    rules.add("【规则文件】" + p.getFileName() + "\n" + (r == null ? "" : r));
+                    rules.add(ruleFileLabel(l) + p.getFileName() + "\n" + (r == null ? "" : r));
                 }
                 ruleCount += mdRules.size();
             } else {
                 text = extractor.extractDocxText(p);
-                rules.add("【规则文件】" + p.getFileName() + "\n" + (text == null ? "" : text));
+                rules.add(ruleFileLabel(l) + p.getFileName() + "\n" + (text == null ? "" : text));
                 ruleCount += 1;
             }
         }
-        return new RulesData(rules, ruleCount);
+        return new RulesData(rules, ruleCount, l, dir.toString());
     }
 
     private static int countRulesInMarkdown(String md) {
@@ -152,6 +154,75 @@ public final class RulesLoader {
             return "";
         }
         return n.substring(idx).toLowerCase();
+    }
+
+    private static String normalizeLang(String lang) {
+        if (lang == null) {
+            return "zh";
+        }
+        String t = lang.trim().toLowerCase();
+        if (t.isEmpty()) {
+            return "zh";
+        }
+        if (t.startsWith("en")) {
+            return "en";
+        }
+        if (t.startsWith("ja") || t.startsWith("jp")) {
+            return "ja";
+        }
+        if (t.startsWith("zh")) {
+            return "zh";
+        }
+        return "zh";
+    }
+
+    private static Path resolveLangRulesDir(Path rulesDir, String lang) {
+        Path dir = rulesDir.toAbsolutePath().normalize();
+        String l = normalizeLang(lang);
+        Path candidate = dir.resolve(l);
+        if (Files.isDirectory(candidate)) {
+            return candidate;
+        }
+        return dir;
+    }
+
+    private static List<Path> filterFilesByLang(List<Path> all, String lang) {
+        if (all == null || all.isEmpty()) {
+            return List.of();
+        }
+        boolean anyTagged = false;
+        for (Path p : all) {
+            if (hasAnyLangSuffix(p)) {
+                anyTagged = true;
+                break;
+            }
+        }
+        if (!anyTagged) {
+            return all;
+        }
+        String l = normalizeLang(lang);
+        List<Path> out = new ArrayList<>();
+        for (Path p : all) {
+            if (!hasAnyLangSuffix(p) || hasLangSuffix(p, l)) {
+                out.add(p);
+            }
+        }
+        return out;
+    }
+
+    private static boolean hasAnyLangSuffix(Path p) {
+        return hasLangSuffix(p, "zh") || hasLangSuffix(p, "en") || hasLangSuffix(p, "ja");
+    }
+
+    private static boolean hasLangSuffix(Path p, String lang) {
+        if (p == null) {
+            return false;
+        }
+        String l = normalizeLang(lang);
+        String name = p.getFileName().toString().toLowerCase();
+        int dot = name.lastIndexOf('.');
+        String base = dot >= 0 ? name.substring(0, dot) : name;
+        return base.endsWith("_" + l) || base.endsWith("-" + l) || base.endsWith("." + l);
     }
 
     private static String normalizeIndustry(String s) {
@@ -238,5 +309,47 @@ public final class RulesLoader {
             }
         }
         return false;
+    }
+
+    private static String ruleFileLabel(String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "[Rule File] ";
+        if ("ja".equals(l)) return "【ルールファイル】";
+        return "【规则文件】";
+    }
+
+    private static String msgRulesDirMustExist(String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Rules directory must be an existing directory: ";
+        if ("ja".equals(l)) return "ルールディレクトリは既存のディレクトリである必要があります: ";
+        return "规则目录必须是已存在的目录: ";
+    }
+
+    private static String msgReadRulesDirFailed(String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Failed to read rules directory: ";
+        if ("ja".equals(l)) return "ルールディレクトリの読み取りに失敗しました: ";
+        return "读取规则目录失败: ";
+    }
+
+    private static String msgNoRuleFiles(String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "No rule files found under rules directory: ";
+        if ("ja".equals(l)) return "ルールディレクトリ配下にルールファイルが見つかりません: ";
+        return "规则目录下未找到规则文件: ";
+    }
+
+    private static String msgReadRuleFileFailed(String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Failed to read rule file: ";
+        if ("ja".equals(l)) return "ルールファイルの読み取りに失敗しました: ";
+        return "读取规则文件失败: ";
+    }
+
+    private static String msgDocNotSupported(String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Rule file .doc is not supported, please convert to .docx: ";
+        if ("ja".equals(l)) return "ルールファイル .doc は未対応です。.docx に変換してください: ";
+        return "规则文件暂不支持 .doc，请转换为 .docx: ";
     }
 }

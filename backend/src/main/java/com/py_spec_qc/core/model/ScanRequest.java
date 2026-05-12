@@ -11,5 +11,7 @@ public final class ScanRequest {
 
     @JsonProperty("rules_dir")
     public String rulesDir;
-}
 
+    @JsonProperty("lang")
+    public String lang;
+}

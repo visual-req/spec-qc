@@ -20,21 +20,23 @@ public final class ConfigLoader {
     public AppConfig load() {
         LoadedConfig loaded = loadConfig();
         Map<String, Object> config = loaded.data;
+        Map<String, Object> llm = asMap(config.get("llm"));
         Map<String, Object> deepseek = asMap(config.get("deepseek"));
+        Map<String, Object> provider = llm.isEmpty() ? deepseek : llm;
         Map<String, Object> server = asMap(config.get("server"));
 
-        String baseUrl = envOr((String) deepseek.get("base_url"), "DEEPSEEK_BASE_URL");
+        String baseUrl = envOrAny((String) provider.get("base_url"), "LLM_BASE_URL", "DEEPSEEK_BASE_URL");
         if (baseUrl == null || baseUrl.isBlank()) {
             baseUrl = "https://api.deepseek.com/v1";
         }
 
-        String model = envOr((String) deepseek.get("model"), "DEEPSEEK_MODEL");
+        String model = envOrAny((String) provider.get("model"), "LLM_MODEL", "DEEPSEEK_MODEL");
         if (model == null || model.isBlank()) {
             model = "deepseek-chat";
         }
 
-        String apiKey = envOr((String) deepseek.get("api_key"), "DEEPSEEK_API_KEY");
-        if (apiKey != null && apiKey.equals("YOUR_DEEPSEEK_API_KEY")) {
+        String apiKey = envOrAny((String) provider.get("api_key"), "LLM_API_KEY", "DEEPSEEK_API_KEY");
+        if (apiKey != null && (apiKey.equals("YOUR_DEEPSEEK_API_KEY") || apiKey.equals("YOUR_LLM_API_KEY"))) {
             apiKey = null;
         }
         if (apiKey != null && apiKey.isBlank()) {
@@ -81,6 +83,21 @@ public final class ConfigLoader {
         String env = System.getenv(envName);
         if (env != null && !env.isBlank()) {
             return env;
+        }
+        return configValue;
+    }
+
+    private static String envOrAny(String configValue, String... envNames) {
+        if (envNames != null) {
+            for (String name : envNames) {
+                if (name == null || name.isBlank()) {
+                    continue;
+                }
+                String env = System.getenv(name);
+                if (env != null && !env.isBlank()) {
+                    return env;
+                }
+            }
         }
         return configValue;
     }

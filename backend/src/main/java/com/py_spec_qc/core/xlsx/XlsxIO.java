@@ -21,18 +21,39 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xssf.usermodel.XSSFCellStyle;
 
 public final class XlsxIO {
-    public void writeError(Path path, String fileName, String errorMsg) {
+    public void writeError(Path path, String fileName, String errorMsg, String lang) {
         List<List<String>> rows = new ArrayList<>();
-        rows.add(List.of("文件名", "状态", "错误信息"));
-        rows.add(List.of(nullToEmpty(fileName), "失败", nullToEmpty(errorMsg)));
+        if ("en".equals(lang)) {
+            rows.add(List.of("File Name", "Status", "Error Message"));
+            rows.add(List.of(nullToEmpty(fileName), "Failed", nullToEmpty(errorMsg)));
+        } else if ("ja".equals(lang)) {
+            rows.add(List.of("ファイル名", "ステータス", "エラーメッセージ"));
+            rows.add(List.of(nullToEmpty(fileName), "失敗", nullToEmpty(errorMsg)));
+        } else {
+            rows.add(List.of("文件名", "状态", "错误信息"));
+            rows.add(List.of(nullToEmpty(fileName), "失败", nullToEmpty(errorMsg)));
+        }
         writeSheet(path, "quality", rows);
     }
 
-    public void writeIssues(Path path, String fileName, List<Issue> issues) {
+    public void writeIssues(Path path, String fileName, List<Issue> issues, String lang) {
         List<List<String>> rows = new ArrayList<>();
-        rows.add(List.of("文件名", "序号", "严重性", "问题分类", "问题描述", "页号", "章节编号", "内容摘抄", "解决建议", "关联质量标准"));
+        if ("en".equals(lang)) {
+            rows.add(List.of("File Name", "No.", "Severity", "Category", "Description", "Page", "Section", "Evidence Excerpt", "Suggestion", "Related Standard"));
+        } else if ("ja".equals(lang)) {
+            rows.add(List.of("ファイル名", "番号", "重要度", "カテゴリ", "説明", "ページ", "セクション", "内容の抜粋", "提案", "関連基準"));
+        } else {
+            rows.add(List.of("文件名", "序号", "严重性", "问题分类", "问题描述", "页号", "章节编号", "内容摘抄", "解决建议", "关联质量标准"));
+        }
+        
         if (issues == null || issues.isEmpty()) {
-            rows.add(List.of(nullToEmpty(fileName), "0", "", "", "未发现问题", "", "", "", "", ""));
+            if ("en".equals(lang)) {
+                rows.add(List.of(nullToEmpty(fileName), "0", "", "", "No issues found", "", "", "", "", ""));
+            } else if ("ja".equals(lang)) {
+                rows.add(List.of(nullToEmpty(fileName), "0", "", "", "問題は見つかりませんでした", "", "", "", "", ""));
+            } else {
+                rows.add(List.of(nullToEmpty(fileName), "0", "", "", "未发现问题", "", "", "", "", ""));
+            }
         } else {
             int idx = 0;
             for (Issue it : issues) {
@@ -112,11 +133,6 @@ public final class XlsxIO {
             int r = 0;
             for (List<String> row : rows) {
                 Row rr = sheet.createRow(r++);
-                if (r == 1) {
-                    rr.setHeightInPoints(22f);
-                } else {
-                    rr.setHeightInPoints(20f);
-                }
                 int c = 0;
                 for (String v : row) {
                     Cell cell = rr.createCell(c++, CellType.STRING);
@@ -130,12 +146,67 @@ public final class XlsxIO {
                 int w = sheet.getColumnWidth(i);
                 sheet.setColumnWidth(i, Math.min(w + 512, 256 * 60));
             }
+
+            float headerMin = 22f;
+            float bodyMin = 20f;
+            float lineHeight = 15f;
+            for (int ri = 0; ri < rows.size(); ri++) {
+                Row rr = sheet.getRow(ri);
+                if (rr == null) {
+                    continue;
+                }
+                if (ri == 0) {
+                    rr.setHeightInPoints(headerMin);
+                    continue;
+                }
+                int lineCount = estimateRowLines(rows.get(ri), sheet, cols);
+                float h = Math.max(bodyMin, lineCount * lineHeight);
+                rr.setHeightInPoints(h);
+            }
             try (OutputStream out = Files.newOutputStream(p)) {
                 wb.write(out);
             }
         } catch (IOException e) {
             throw new RuntimeException("Operation not permitted: '" + p + "'", e);
         }
+    }
+
+    private static int estimateRowLines(List<String> row, Sheet sheet, int cols) {
+        if (row == null || row.isEmpty()) {
+            return 1;
+        }
+        int max = 1;
+        int n = Math.min(cols, row.size());
+        for (int i = 0; i < n; i++) {
+            int colWidth = sheet.getColumnWidth(i);
+            int colChars = Math.max(8, colWidth / 256);
+            String text = nullToEmpty(row.get(i));
+            int lines = estimateWrappedLines(text, colChars);
+            if (lines > max) {
+                max = lines;
+            }
+        }
+        return Math.max(1, max);
+    }
+
+    private static int estimateWrappedLines(String text, int colChars) {
+        String t = nullToEmpty(text).replace("\r\n", "\n").replace("\r", "\n");
+        if (t.isEmpty()) {
+            return 1;
+        }
+        int lines = 0;
+        String[] parts = t.split("\n", -1);
+        for (String part : parts) {
+            String s = part == null ? "" : part;
+            if (s.isEmpty()) {
+                lines += 1;
+                continue;
+            }
+            int len = s.length();
+            int chunk = Math.max(1, colChars);
+            lines += (int) Math.ceil((double) len / (double) chunk);
+        }
+        return Math.max(1, lines);
     }
 
     private static XSSFCellStyle createHeaderStyle(XSSFWorkbook wb) {

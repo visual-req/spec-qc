@@ -1,3 +1,5 @@
+[中文](README.md) | [English](README_en.md) | [日本語](README_ja.md)
+
 # spec-qc（AI 需求质量扫描）
 
 本项目用于批量扫描需求 Word 文档（.docx），输出质量问题到 Excel（.xlsx），并提供本地 Web UI 用于选择目录、查看进度、逐条接受/拒绝问题点、下载结果。
@@ -78,7 +80,7 @@ java -jar spec-qc-0.1.0.jar scan -req /path/to/req_dir
 
 如何新增规则与文件格式见：
 
-- `docs/rules.md`
+- `docs/zh/rules.md`
 
 ## 日志与排障
 
@@ -87,11 +89,11 @@ java -jar spec-qc-0.1.0.jar scan -req /path/to/req_dir
 
 常见问题与解决方式见：
 
-- `docs/troubleshooting.md`
+- `docs/zh/troubleshooting.md`
 
 更多结构说明见：
 
-- `docs/structure.md`
+- `docs/zh/structure.md`
 
 ## 安全提示
 

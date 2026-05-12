@@ -16,6 +16,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,7 @@ public final class DeepSeekClient {
             body = MAPPER.writeValueAsBytes(payload);
         } catch (IOException e) {
             log(requestId, "serialize_error", Map.of(
+                    "provider", "deepseek",
                     "url", safeUrl(url),
                     "model", safeStr(model),
                     "message_count", String.valueOf(messages == null ? 0 : messages.size()),
@@ -51,11 +53,15 @@ public final class DeepSeekClient {
             throw new IllegalArgumentException("Failed to serialize DeepSeek request", e);
         }
 
+        String bodySha256 = sha256Hex(body);
         log(requestId, "request_start", Map.of(
+                "provider", "deepseek",
                 "url", safeUrl(url),
+                "method", "POST",
                 "model", safeStr(model),
                 "message_count", String.valueOf(messages == null ? 0 : messages.size()),
                 "request_bytes", String.valueOf(body.length),
+                "request_sha256", bodySha256,
                 "sensitive_logging", String.valueOf(sensitiveLoggingEnabled()),
                 "messages_summary", summarizeMessages(messages)
         ));
@@ -76,6 +82,7 @@ public final class DeepSeekClient {
                 Thread.currentThread().interrupt();
             }
             log(requestId, "request_error", Map.of(
+                    "provider", "deepseek",
                     "url", safeUrl(url),
                     "model", safeStr(model),
                     "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
@@ -88,18 +95,31 @@ public final class DeepSeekClient {
         int status = resp.statusCode();
         byte[] respBody = resp.body() == null ? new byte[0] : resp.body();
         String respText = new String(respBody, StandardCharsets.UTF_8);
+        String headerRequestId = firstHeader(resp, "x-request-id");
+        if (headerRequestId.isBlank()) {
+            headerRequestId = firstHeader(resp, "openai-request-id");
+        }
         log(requestId, "response_received", Map.of(
+                "provider", "deepseek",
                 "url", safeUrl(url),
                 "status", String.valueOf(status),
                 "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
                 "response_bytes", String.valueOf(respBody.length),
+                "resp_x_request_id", headerRequestId,
+                "resp_retry_after", firstHeader(resp, "retry-after"),
+                "resp_content_type", firstHeader(resp, "content-type"),
                 "response_preview", previewResponse(respText)
         ));
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            Map<String, String> err = extractErrorFields(respText);
             log(requestId, "http_error", Map.of(
+                    "provider", "deepseek",
                     "url", safeUrl(url),
                     "status", String.valueOf(status),
                     "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
+                    "error_message", err.getOrDefault("message", ""),
+                    "error_type", err.getOrDefault("type", ""),
+                    "error_code", err.getOrDefault("code", ""),
                     "response_preview", previewResponse(respText)
             ));
             throw new RuntimeException("DeepSeek API HTTPError: " + resp.statusCode() + ": " + respText);
@@ -110,6 +130,7 @@ public final class DeepSeekClient {
             root = MAPPER.readTree(respText);
         } catch (IOException e) {
             log(requestId, "invalid_json", Map.of(
+                    "provider", "deepseek",
                     "url", safeUrl(url),
                     "status", String.valueOf(status),
                     "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
@@ -119,9 +140,21 @@ public final class DeepSeekClient {
             throw new RuntimeException("DeepSeek API invalid JSON response: " + respText, e);
         }
 
+        Map<String, String> usage = extractUsageFields(root);
+        if (!usage.isEmpty()) {
+            Map<String, String> fields = new HashMap<>();
+            fields.put("provider", "deepseek");
+            fields.put("url", safeUrl(url));
+            fields.put("status", String.valueOf(status));
+            fields.put("elapsed_ms", String.valueOf(elapsedMs(startedNs)));
+            fields.putAll(usage);
+            log(requestId, "response_usage", fields);
+        }
+
         JsonNode content = root.path("choices").path(0).path("message").path("content");
         if (!content.isTextual() || content.asText().isBlank()) {
             log(requestId, "missing_content", Map.of(
+                    "provider", "deepseek",
                     "url", safeUrl(url),
                     "status", String.valueOf(status),
                     "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
@@ -131,10 +164,12 @@ public final class DeepSeekClient {
         }
         String out = content.asText();
         log(requestId, "request_done", Map.of(
+                "provider", "deepseek",
                 "url", safeUrl(url),
                 "status", String.valueOf(status),
                 "elapsed_ms", String.valueOf(elapsedMs(startedNs)),
                 "content_chars", String.valueOf(out.length()),
+                "content_sha256", sha256Hex(out.getBytes(StandardCharsets.UTF_8)),
                 "content_preview", previewResponse(out)
         ));
         return out;
@@ -223,7 +258,7 @@ public final class DeepSeekClient {
         Path logFile = resolveLogFile();
         StringBuilder sb = new StringBuilder();
         sb.append(ISO.format(OffsetDateTime.now()));
-        sb.append(" deepseek");
+        sb.append(" llm");
         sb.append(" request_id=").append(requestId == null ? "" : requestId);
         sb.append(" event=").append(event == null ? "" : event);
         if (fields != null && !fields.isEmpty()) {
@@ -310,6 +345,76 @@ public final class DeepSeekClient {
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    private static String sha256Hex(byte[] data) {
+        if (data == null || data.length == 0) {
+            return "";
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] out = md.digest(data);
+            StringBuilder sb = new StringBuilder(out.length * 2);
+            for (byte b : out) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+                sb.append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String firstHeader(HttpResponse<?> resp, String name) {
+        if (resp == null || name == null || name.isBlank()) {
+            return "";
+        }
+        try {
+            return resp.headers().firstValue(name).orElse("");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static Map<String, String> extractUsageFields(JsonNode root) {
+        if (root == null) {
+            return Map.of();
+        }
+        JsonNode u = root.path("usage");
+        if (u == null || u.isMissingNode() || u.isNull() || !u.isObject()) {
+            return Map.of();
+        }
+        Map<String, String> out = new HashMap<>();
+        String prompt = u.path("prompt_tokens").isNumber() ? String.valueOf(u.path("prompt_tokens").asLong()) : "";
+        String completion = u.path("completion_tokens").isNumber() ? String.valueOf(u.path("completion_tokens").asLong()) : "";
+        String total = u.path("total_tokens").isNumber() ? String.valueOf(u.path("total_tokens").asLong()) : "";
+        if (!prompt.isBlank()) out.put("usage_prompt_tokens", prompt);
+        if (!completion.isBlank()) out.put("usage_completion_tokens", completion);
+        if (!total.isBlank()) out.put("usage_total_tokens", total);
+        return out;
+    }
+
+    private static Map<String, String> extractErrorFields(String respText) {
+        if (respText == null || respText.isBlank()) {
+            return Map.of();
+        }
+        try {
+            JsonNode root = MAPPER.readTree(respText);
+            JsonNode err = root.path("error");
+            if (err == null || err.isMissingNode() || err.isNull() || !err.isObject()) {
+                return Map.of();
+            }
+            Map<String, String> out = new HashMap<>();
+            String msg = err.path("message").isTextual() ? err.path("message").asText() : "";
+            String type = err.path("type").isTextual() ? err.path("type").asText() : "";
+            String code = err.path("code").isTextual() ? err.path("code").asText() : "";
+            if (!msg.isBlank()) out.put("message", msg);
+            if (!type.isBlank()) out.put("type", type);
+            if (!code.isBlank()) out.put("code", code);
+            return out;
+        } catch (Exception e) {
+            return Map.of();
         }
     }
 }

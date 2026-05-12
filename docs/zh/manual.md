@@ -1,3 +1,5 @@
+[中文](manual.md) | [English](../en/manual.md) | [日本語](../ja/manual.md)
+
 ## Web UI 使用手册
 
 ### 1) 启动与进入页面

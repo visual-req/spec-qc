@@ -50,7 +50,90 @@ public final class QualityScanner {
     private final ModelOutputParser outputParser = new ModelOutputParser();
     private final XlsxIO xlsx = new XlsxIO();
 
-    public List<Path> scanReqDirPaths(Path reqDir, Path outDir, Path rulesDir, ProgressCallback progressCallback) {
+    private static String msgStartFile(String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Start";
+        if ("ja".equals(l)) return "開始";
+        return "开始";
+    }
+
+    private static String msgParseDoc(String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Parsing document";
+        if ("ja".equals(l)) return "ドキュメントを解析中";
+        return "解析文档";
+    }
+
+    private static String msgFail(String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Failed";
+        if ("ja".equals(l)) return "失敗";
+        return "失败";
+    }
+
+    private static String msgScanRule(int from, int to, int total, String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Scanning rules " + from + "-" + to + "/" + total;
+        if ("ja".equals(l)) return "ルールをスキャン中 " + from + "-" + to + "/" + total;
+        return "扫描规则 " + from + "-" + to + "/" + total;
+    }
+
+    private static String msgReqModel(int from, int to, int total, String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Requesting model (" + from + "-" + to + "/" + total + ")";
+        if ("ja".equals(l)) return "モデルをリクエスト中 (" + from + "-" + to + "/" + total + ")";
+        return "请求模型 (" + from + "-" + to + "/" + total + ")";
+    }
+
+    private static String msgFoundIssues(int count, String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Found " + count + " issues";
+        if ("ja".equals(l)) return count + " 個の問題を発見しました";
+        return "已发现问题 " + count + " 个";
+    }
+
+    private static String msgWriteReport(String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Writing report";
+        if ("ja".equals(l)) return "レポートを作成中";
+        return "写入报告";
+    }
+
+    private static String msgDone(String lang) {
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Done";
+        if ("ja".equals(l)) return "完了";
+        return "完成";
+    }
+
+    private static String msgFailWithReason(String lang, String reason) {
+        String r = shortReason(reason);
+        if (r.isBlank()) {
+            return msgFail(lang);
+        }
+        String l = normalizeLang(lang);
+        if ("en".equals(l)) return "Failed: " + r;
+        if ("ja".equals(l)) return "失敗: " + r;
+        return "失败: " + r;
+    }
+
+    private static String shortReason(String s) {
+        String t = s == null ? "" : s.trim();
+        if (t.isEmpty()) {
+            return "";
+        }
+        t = t.replace("\r\n", "\n").replace("\r", "\n");
+        int nl = t.indexOf('\n');
+        if (nl >= 0) {
+            t = t.substring(0, nl).trim();
+        }
+        if (t.length() > 220) {
+            t = t.substring(0, 220);
+        }
+        return t;
+    }
+
+    public List<Path> scanReqDirPaths(Path reqDir, Path outDir, Path rulesDir, String lang, ProgressCallback progressCallback) {
         if (reqDir == null) {
             throw new IllegalArgumentException("-req must be an existing directory: null");
         }
@@ -59,7 +142,7 @@ public final class QualityScanner {
             throw new IllegalArgumentException("-req must be an existing directory: " + req);
         }
 
-        RulesData rulesData = rulesLoader.load(rulesDir);
+        RulesData rulesData = rulesLoader.load(rulesDir, lang);
         AppConfig config = configLoader.load();
 
         List<Path> wordFiles = listWordFiles(req);
@@ -70,7 +153,15 @@ public final class QualityScanner {
         Path requestedOutDir = outDir == null ? null : outDir.toAbsolutePath().normalize();
         Path defaultWorkDir = pickWritableWorkDir(config, req);
         Path logPath = resolveLogPath(config, defaultWorkDir);
-        appendScanLog(logPath, "scan start req_dir=" + req + " out_dir=" + (requestedOutDir == null ? "" : requestedOutDir) + " rules_dir=" + (rulesDir == null ? "" : rulesDir.toAbsolutePath().normalize()) + " rule_count=" + rulesData.ruleCount());
+        appendScanLog(
+                logPath,
+                "scan start req_dir=" + req
+                        + " out_dir=" + (requestedOutDir == null ? "" : requestedOutDir)
+                        + " rules_dir=" + (rulesDir == null ? "" : rulesDir.toAbsolutePath().normalize())
+                        + " rules_lang=" + (rulesData.lang() == null ? "" : rulesData.lang())
+                        + " rules_source=" + (rulesData.source() == null ? "" : rulesData.source())
+                        + " rule_count=" + rulesData.ruleCount()
+        );
         Path resolvedOutDir = requestedOutDir != null
                 ? requestedOutDir
                 : defaultWorkDir.resolve("output").toAbsolutePath().normalize();
@@ -108,7 +199,7 @@ public final class QualityScanner {
             if (progressCallback != null) {
                 FileProgress fp = new FileProgress();
                 fp.fileName = wordPath.getFileName().toString();
-                fp.status = "开始";
+                fp.status = msgStartFile(lang);
                 fp.startedAt = startedAt;
                 progressCallback.onUpdate(fp);
             }
@@ -118,8 +209,13 @@ public final class QualityScanner {
 
             String suf = suffixLower(wordPath);
             if (suf.equals(".doc")) {
-                xlsx.writeError(outPath, wordPath.getFileName().toString(), "暂不支持 .doc，请转换为 .docx");
-                notifyDone(progressCallback, wordPath, startedAt, startedNs, rulesData.ruleCount(), 0, "失败", outPath, List.of());
+                String err = normalizeLang(lang).equals("en")
+                        ? "'.doc' is not supported yet. Please convert to '.docx'."
+                        : (normalizeLang(lang).equals("ja")
+                        ? "'.doc' は未対応です。'.docx' に変換してください。"
+                        : "暂不支持 .doc，请转换为 .docx");
+                xlsx.writeError(outPath, wordPath.getFileName().toString(), err, lang);
+                notifyDone(progressCallback, wordPath, startedAt, startedNs, rulesData.ruleCount(), 0, msgFailWithReason(lang, err), outPath, List.of());
                 appendScanLog(logPath, "file failed file=" + wordPath.getFileName().toString() + " stage=validate err=unsupported_doc elapsed_ms=" + ((System.nanoTime() - startedNs) / 1_000_000L));
                 continue;
             }
@@ -127,20 +223,39 @@ public final class QualityScanner {
             if (progressCallback != null) {
                 FileProgress fp = new FileProgress();
                 fp.fileName = wordPath.getFileName().toString();
-                fp.status = "解析文档";
+                fp.status = msgParseDoc(lang);
                 progressCallback.onUpdate(fp);
             }
-            String requirementText = extractor.extractDocxTextWithLocations(wordPath);
+            String requirementText = "";
+            try {
+                requirementText = extractor.extractDocxTextWithLocations(wordPath);
+            } catch (Exception e) {
+                String err = e.getMessage() == null ? String.valueOf(e) : e.getMessage();
+                xlsx.writeError(outPath, wordPath.getFileName().toString(), err, lang);
+                notifyDone(progressCallback, wordPath, startedAt, startedNs, rulesData.ruleCount(), 0, msgFailWithReason(lang, err), outPath, List.of());
+                appendScanLog(logPath, "file failed file=" + wordPath.getFileName().toString() + " stage=parse_docx err=" + err + " elapsed_ms=" + ((System.nanoTime() - startedNs) / 1_000_000L));
+                continue;
+            }
             if (requirementText == null || requirementText.isBlank()) {
-                xlsx.writeError(outPath, wordPath.getFileName().toString(), "Word 文档内容为空或无法解析");
-                notifyDone(progressCallback, wordPath, startedAt, startedNs, rulesData.ruleCount(), 0, "失败", outPath, List.of());
+                String err = normalizeLang(lang).equals("en")
+                        ? "The Word document is empty or cannot be parsed."
+                        : (normalizeLang(lang).equals("ja")
+                        ? "Wordドキュメントが空、または解析できません。"
+                        : "Word 文档内容为空或无法解析");
+                xlsx.writeError(outPath, wordPath.getFileName().toString(), err, lang);
+                notifyDone(progressCallback, wordPath, startedAt, startedNs, rulesData.ruleCount(), 0, msgFailWithReason(lang, err), outPath, List.of());
                 appendScanLog(logPath, "file failed file=" + wordPath.getFileName().toString() + " stage=parse_docx err=empty_or_unreadable elapsed_ms=" + ((System.nanoTime() - startedNs) / 1_000_000L));
                 continue;
             }
 
             if (config.deepseekApiKey == null || config.deepseekApiKey.isBlank()) {
-                xlsx.writeError(outPath, wordPath.getFileName().toString(), "DeepSeek api_key 未配置。请在 executable/config.yaml 设置 deepseek.api_key，或设置环境变量 DEEPSEEK_API_KEY。");
-                notifyDone(progressCallback, wordPath, startedAt, startedNs, rulesData.ruleCount(), 0, "失败", outPath, List.of());
+                String err = normalizeLang(lang).equals("en")
+                        ? "LLM api_key is not configured. Set llm.api_key in executable/config.yaml (deepseek.api_key is also supported), or set env LLM_API_KEY / DEEPSEEK_API_KEY."
+                        : (normalizeLang(lang).equals("ja")
+                        ? "LLM api_key が未設定です。executable/config.yaml の llm.api_key（deepseek.api_key 互換）を設定するか、環境変数 LLM_API_KEY / DEEPSEEK_API_KEY を設定してください。"
+                        : "LLM api_key 未配置。请在 executable/config.yaml 设置 llm.api_key（兼容 deepseek.api_key），或设置环境变量 LLM_API_KEY / DEEPSEEK_API_KEY。");
+                xlsx.writeError(outPath, wordPath.getFileName().toString(), err, lang);
+                notifyDone(progressCallback, wordPath, startedAt, startedNs, rulesData.ruleCount(), 0, msgFailWithReason(lang, err), outPath, List.of());
                 appendScanLog(logPath, "file failed file=" + wordPath.getFileName().toString() + " stage=validate err=deepseek_api_key_missing elapsed_ms=" + ((System.nanoTime() - startedNs) / 1_000_000L));
                 continue;
             }
@@ -163,7 +278,7 @@ public final class QualityScanner {
                 if (progressCallback != null) {
                     FileProgress fp = new FileProgress();
                     fp.fileName = wordPath.getFileName().toString();
-                    fp.status = "扫描规则 " + from + "-" + to + "/" + totalRules;
+                    fp.status = msgScanRule(from, to, totalRules, lang);
                     fp.ruleCount = totalRules;
                     fp.issueCount = issueItems.size();
                     fp.issues = issueItems;
@@ -176,7 +291,7 @@ public final class QualityScanner {
                     if (progressCallback != null) {
                         FileProgress fp = new FileProgress();
                         fp.fileName = wordPath.getFileName().toString();
-                        fp.status = "请求模型 (" + from + "-" + to + "/" + totalRules + ")";
+                        fp.status = msgReqModel(from, to, totalRules, lang);
                         fp.ruleCount = totalRules;
                         fp.issueCount = issueItems.size();
                         fp.issues = issueItems;
@@ -186,7 +301,7 @@ public final class QualityScanner {
                             config.deepseekBaseUrl,
                             config.deepseekApiKey,
                             config.deepseekModel,
-                            buildMessages(chunkText, requirementText, from, to, totalRules)
+                            buildMessages(chunkText, requirementText, from, to, totalRules, lang)
                     );
                     JsonNode obj = outputParser.parseJsonObject(content);
                     JsonNode issues = obj.get("issues");
@@ -220,7 +335,7 @@ public final class QualityScanner {
                     if (progressCallback != null) {
                         FileProgress fp = new FileProgress();
                         fp.fileName = wordPath.getFileName().toString();
-                        fp.status = "已发现问题 " + issueItems.size() + " 个";
+                        fp.status = msgFoundIssues(issueItems.size(), lang);
                         fp.ruleCount = totalRules;
                         fp.issueCount = issueItems.size();
                         fp.issues = issueItems;
@@ -238,8 +353,8 @@ public final class QualityScanner {
             }
 
             if (modelFailed) {
-                xlsx.writeError(outPath, wordPath.getFileName().toString(), modelErr);
-                notifyDone(progressCallback, wordPath, startedAt, startedNs, totalRules, 0, "失败", outPath, List.of());
+                xlsx.writeError(outPath, wordPath.getFileName().toString(), modelErr, lang);
+                notifyDone(progressCallback, wordPath, startedAt, startedNs, totalRules, 0, msgFailWithReason(lang, modelErr), outPath, List.of());
                 appendScanLog(logPath, "file failed file=" + wordPath.getFileName().toString() + " stage=model " + modelStage + " err=" + modelErr + " elapsed_ms=" + ((System.nanoTime() - startedNs) / 1_000_000L));
                 continue;
             }
@@ -247,12 +362,12 @@ public final class QualityScanner {
             if (progressCallback != null) {
                 FileProgress fp = new FileProgress();
                 fp.fileName = wordPath.getFileName().toString();
-                fp.status = "写入报告";
+                fp.status = msgWriteReport(lang);
                 progressCallback.onUpdate(fp);
             }
-            xlsx.writeIssues(outPath, wordPath.getFileName().toString(), issueItems);
+            xlsx.writeIssues(outPath, wordPath.getFileName().toString(), issueItems, lang);
             writeReviewJson(outPath, wordPath, issueItems);
-            notifyDone(progressCallback, wordPath, startedAt, startedNs, totalRules, issueItems.size(), "完成", outPath, issueItems);
+            notifyDone(progressCallback, wordPath, startedAt, startedNs, totalRules, issueItems.size(), msgDone(lang), outPath, issueItems);
             appendScanLog(logPath, "file done file=" + wordPath.getFileName().toString() + " issues=" + issueItems.size() + " out=" + outPath.toAbsolutePath().normalize() + " elapsed_ms=" + ((System.nanoTime() - startedNs) / 1_000_000L));
         }
 
@@ -285,21 +400,25 @@ public final class QualityScanner {
         return p.getParent().resolve(name);
     }
 
-    private static List<Map<String, Object>> buildMessages(String qualityStandardText, String requirementText, int from, int to, int total) {
+    private static List<Map<String, Object>> buildMessages(String qualityStandardText, String requirementText, int from, int to, int total, String lang) {
         List<Map<String, Object>> messages = new ArrayList<>();
         messages.add(Map.of(
                 "role", "system",
                 "content", "你是资深需求质量专家。请严格按要求输出 JSON，不要输出任何额外文字。"
         ));
+        String normalizedLang = normalizeLang(lang);
+        String outputLanguage = normalizedLang.equals("en") ? "English" : (normalizedLang.equals("ja") ? "Japanese" : "Chinese");
+        String severitySpec = normalizedLang.equals("en") ? "High/Medium/Low" : "高/中/低";
         String userContent = ""
                 + "请基于下面的质量规范，对需求文档进行质量扫描。\n"
                 + "要求：\n"
                 + "1) 输出必须是 JSON object，包含字段 issues。\n"
-                + "2) issues 是数组，每项包含：severity(高/中/低)、category、description、evidence_page、evidence_section、evidence_paragraph、evidence_excerpt、suggestion、suggestion_html、related_standard。\n"
+                + "2) issues 是数组，每项包含：severity(" + severitySpec + ")、category、description、evidence_page、evidence_section、evidence_paragraph、evidence_excerpt、suggestion、suggestion_html、related_standard。\n"
                 + "3) evidence_paragraph 请填写“对应定位行”的完整段落原文（包含有问题片段前后的上下文，尽量原样复制，不要省略/不要用省略号），不要包含前缀定位标记。\n"
                 + "4) evidence_excerpt 请填写段落中“有问题的那一小段原文”，必须是 evidence_paragraph 的子串，便于前端高亮。\n"
                 + "5) related_standard 必须填写“命中的检查规则”的编号及标题，不要填写分类词（例如：易读性/一致性）。\n"
                 + "   格式要求：从下方【质量规范】里提取对应规则的“编号 + 标题”，但不要包含任何 Markdown 符号（例如 ###/####）。例如：3.2.1 需求必须可验证。\n"
+                + "5.1) 语言要求：severity/category/description/suggestion/suggestion_html/related_standard 的文本必须使用 " + outputLanguage + "。evidence_* 字段必须从【需求文档内容】原样拷贝，禁止翻译。\n"
                 + "6) 若某条规则已符合规范（无需修改/无问题/符合要求），不要输出为 issue。\n"
                 + "6.1) 输出规模限制：issues 数组最多 12 条；每个字段（description/evidence_section/evidence_paragraph/evidence_excerpt/suggestion/related_standard）长度不超过 400 字符，超过则截断；suggestion_html 不超过 2000 字符。\n"
                 + "7) 关于排序：只要需求里出现“按<字段>升序/降序/倒序/从新到旧/最新优先”等语义，就视为已定义排序字段与顺序，不要判为“遗漏排序条件/顺序未定义”。例如：默认按政策提交日期降序排序。\n"
@@ -327,6 +446,23 @@ public final class QualityScanner {
         user.put("content", userContent);
         messages.add(user);
         return messages;
+    }
+
+    private static String normalizeLang(String raw) {
+        String s = raw == null ? "" : raw.trim().toLowerCase();
+        if (s.isEmpty()) {
+            return "zh";
+        }
+        if (s.startsWith("zh")) {
+            return "zh";
+        }
+        if (s.startsWith("ja") || s.startsWith("jp")) {
+            return "ja";
+        }
+        if (s.startsWith("en")) {
+            return "en";
+        }
+        return "zh";
     }
 
     private static List<Issue> parseIssues(JsonNode issuesArray) {

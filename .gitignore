@@ -27,6 +27,8 @@ work/uploads/**
 !work/quality/
 work/quality/*
 !work/quality/*.md
+!work/quality/*/
+!work/quality/*/*.md
 
 executable/work/cache.yaml
 executable/work/input/**
@@ -44,3 +46,5 @@ executable/work/uploads/**
 executable/work/quality/*
 !executable/work/quality/*.md
 !executable/work/quality/.gitkeep
+!executable/work/quality/*/
+!executable/work/quality/*/*.md

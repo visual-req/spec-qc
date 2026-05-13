@@ -43,23 +43,8 @@
             <label>{{ t('label.reqDirLocal') }}</label>
             <div class="input-row">
               <input v-model="reqDir" :placeholder="t('placeholder.absPath')" />
-              <button class="btn" :disabled="isScanning" @click="togglePicker('reqDir')">{{ activePicker === 'reqDir' ? t('btn.collapse') : t('btn.chooseFolder') }}</button>
-            </div>
-            <div v-if="activePicker === 'reqDir'">
-              <div class="spacer"></div>
-              <div class="root-row">
-                <button v-for="r in roots" :key="r.name" class="btn" @click="openBrowsePath(r.path)">{{ r.name }}</button>
-                <button class="btn" @click="browseGoUp">{{ t('btn.up') }}</button>
-                <button class="btn btn-primary" @click="chooseBrowseDir">{{ t('btn.chooseThisDir') }}</button>
-              </div>
-              <div class="path-box mono">{{ browsePath }}</div>
-              <div class="spacer"></div>
-              <div class="tree">
-                <div v-for="e in browseEntries" :key="e.path" class="tree-row" @click="openBrowsePath(e.path)">
-                  <div class="tree-name">{{ e.name }}</div>
-                </div>
-                <div v-if="!browseEntries.length" class="empty" style="padding: 12px;">{{ t('empty.noSubDirs') }}</div>
-              </div>
+              <button class="btn" :disabled="isScanning" @click="pickDir('reqDir')">{{ t('btn.chooseFolder') }}</button>
+              <button class="btn" :disabled="isScanning || !reqDir" @click="reqDir = ''">{{ t('btn.clear') }}</button>
             </div>
           </div>
           <div class="spacer"></div>
@@ -67,23 +52,8 @@
             <label>{{ t('label.outDir') }}</label>
             <div class="input-row">
               <input v-model="outDir" :placeholder="t('placeholder.outDir')" />
-              <button class="btn" :disabled="isScanning" @click="togglePicker('outDir')">{{ activePicker === 'outDir' ? t('btn.collapse') : t('btn.chooseFolder') }}</button>
-            </div>
-            <div v-if="activePicker === 'outDir'">
-              <div class="spacer"></div>
-              <div class="root-row">
-                <button v-for="r in roots" :key="r.name" class="btn" @click="openBrowsePath(r.path)">{{ r.name }}</button>
-                <button class="btn" @click="browseGoUp">{{ t('btn.up') }}</button>
-                <button class="btn btn-primary" @click="chooseBrowseDir">{{ t('btn.chooseThisDir') }}</button>
-              </div>
-              <div class="path-box mono">{{ browsePath }}</div>
-              <div class="spacer"></div>
-              <div class="tree">
-                <div v-for="e in browseEntries" :key="e.path" class="tree-row" @click="openBrowsePath(e.path)">
-                  <div class="tree-name">{{ e.name }}</div>
-                </div>
-                <div v-if="!browseEntries.length" class="empty" style="padding: 12px;">{{ t('empty.noSubDirs') }}</div>
-              </div>
+              <button class="btn" :disabled="isScanning" @click="pickDir('outDir')">{{ t('btn.chooseFolder') }}</button>
+              <button class="btn" :disabled="isScanning || !outDir" @click="outDir = ''">{{ t('btn.clear') }}</button>
             </div>
           </div>
           <div class="spacer"></div>
@@ -91,23 +61,8 @@
             <label>{{ t('label.rulesDir') }}</label>
             <div class="input-row">
               <input v-model="rulesDir" :placeholder="t('placeholder.rulesDir')" />
-              <button class="btn" :disabled="isScanning" @click="togglePicker('rulesDir')">{{ activePicker === 'rulesDir' ? t('btn.collapse') : t('btn.chooseFolder') }}</button>
-            </div>
-            <div v-if="activePicker === 'rulesDir'">
-              <div class="spacer"></div>
-              <div class="root-row">
-                <button v-for="r in roots" :key="r.name" class="btn" @click="openBrowsePath(r.path)">{{ r.name }}</button>
-                <button class="btn" @click="browseGoUp">{{ t('btn.up') }}</button>
-                <button class="btn btn-primary" @click="chooseBrowseDir">{{ t('btn.chooseThisDir') }}</button>
-              </div>
-              <div class="path-box mono">{{ browsePath }}</div>
-              <div class="spacer"></div>
-              <div class="tree">
-                <div v-for="e in browseEntries" :key="e.path" class="tree-row" @click="openBrowsePath(e.path)">
-                  <div class="tree-name">{{ e.name }}</div>
-                </div>
-                <div v-if="!browseEntries.length" class="empty" style="padding: 12px;">{{ t('empty.noSubDirs') }}</div>
-              </div>
+              <button class="btn" :disabled="isScanning" @click="pickDir('rulesDir')">{{ t('btn.chooseFolder') }}</button>
+              <button class="btn" :disabled="isScanning || !rulesDir" @click="rulesDir = ''">{{ t('btn.clear') }}</button>
             </div>
           </div>
         </div>
@@ -600,11 +555,6 @@ const reviewBusy = ref({})
 const issuePage = ref(1)
 const issuePageSize = 10
 
-const activePicker = ref('')
-const roots = ref([])
-const browsePath = ref('')
-const browseEntries = ref([])
-
 const isScanning = computed(() => !!pollTimer.value)
 
 const fileOptions = computed(() => {
@@ -1040,79 +990,26 @@ async function loadCache() {
   }
 }
 
-async function ensureRootsLoaded() {
-  if (roots.value && roots.value.length) return
+async function pickDir(field) {
+  const key = String(field || '').trim()
+  if (!key) return
+  let initial = ''
+  if (key === 'reqDir') initial = reqDir.value
+  else if (key === 'outDir') initial = outDir.value
+  else if (key === 'rulesDir') initial = rulesDir.value
   try {
-    const data = await getJson('/api/roots')
-    roots.value = Array.isArray(data?.roots) ? data.roots : []
-  } catch (e) {
-    roots.value = []
-  }
-}
-
-async function openBrowsePath(p) {
-  const path = String(p || '').trim()
-  if (!path) return
-  try {
-    const data = await getJson('/api/fs?path=' + encodeURIComponent(path))
-    if (data?.error) {
-      statusText.value = t('msg.readDirFailedPrefix') + String(data.error)
+    const data = await getJson('/api/pick_dir?initial=' + encodeURIComponent(String(initial || '')))
+    const p = String(data?.path || '')
+    if (!p) {
+      if (data?.error) statusText.value = String(data.error)
       return
     }
-    browsePath.value = String(data?.path || path)
-    browseEntries.value = Array.isArray(data?.entries) ? data.entries : []
+    if (key === 'reqDir') reqDir.value = p
+    else if (key === 'outDir') outDir.value = p
+    else if (key === 'rulesDir') rulesDir.value = p
   } catch (e) {
     statusText.value = String(e)
   }
-}
-
-function parentPath(p) {
-  const s = String(p || '')
-  if (!s) return ''
-  const sep = s.includes('\\') ? '\\' : '/'
-  let t = s
-  if (t.endsWith(sep) && t.length > (sep === '\\' ? 3 : 1)) {
-    t = t.slice(0, -1)
-  }
-  const idx = t.lastIndexOf(sep)
-  if (idx < 0) return t
-  if (sep === '\\' && idx <= 2) return t.slice(0, idx + 1)
-  if (sep === '/' && idx === 0) return '/'
-  return t.slice(0, idx)
-}
-
-async function togglePicker(pickerName) {
-  if (activePicker.value === pickerName) {
-    activePicker.value = ''
-    return
-  }
-  activePicker.value = pickerName
-  await ensureRootsLoaded()
-  
-  let initial = ''
-  if (pickerName === 'outDir') initial = outDir.value
-  else if (pickerName === 'reqDir') initial = reqDir.value
-  else if (pickerName === 'rulesDir') initial = rulesDir.value
-
-  initial = initial && initial.trim() ? initial.trim() : (roots.value && roots.value.length ? roots.value[0].path : '')
-  if (initial) {
-    await openBrowsePath(initial)
-  }
-}
-
-function browseGoUp() {
-  const up = parentPath(browsePath.value)
-  if (up && up !== browsePath.value) {
-    openBrowsePath(up)
-  }
-}
-
-function chooseBrowseDir() {
-  if (!browsePath.value) return
-  if (activePicker.value === 'outDir') outDir.value = browsePath.value
-  else if (activePicker.value === 'reqDir') reqDir.value = browsePath.value
-  else if (activePicker.value === 'rulesDir') rulesDir.value = browsePath.value
-  activePicker.value = ''
 }
 
 function pickReqFiles() {

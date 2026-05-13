@@ -47,23 +47,23 @@ public final class ConfigLoader {
         Integer serverPort = parseIntOrNull(envOr(valueToString(server.get("port")), "SPEC_QC_PORT"));
 
         Path workDir = null;
-        Path configDir = loaded.path == null ? null : loaded.path.toAbsolutePath().normalize().getParent();
+        Path cwd = Path.of("").toAbsolutePath().normalize();
         String envWork = System.getenv("SPEC_QC_WORK_DIR");
         if (envWork != null && !envWork.isBlank()) {
             Path p = expandHomePath(envWork.trim());
-            if (p.isAbsolute() || configDir == null) {
+            if (p.isAbsolute()) {
                 workDir = p.toAbsolutePath().normalize();
             } else {
-                workDir = configDir.resolve(p).toAbsolutePath().normalize();
+                workDir = cwd.resolve(p).toAbsolutePath().normalize();
             }
         } else {
             Object wd = config.get("work_dir");
             if (wd instanceof String s && !s.isBlank()) {
                 Path p = expandHomePath(s.trim());
-                if (p.isAbsolute() || configDir == null) {
+                if (p.isAbsolute()) {
                     workDir = p.toAbsolutePath().normalize();
                 } else {
-                    workDir = configDir.resolve(p).toAbsolutePath().normalize();
+                    workDir = cwd.resolve(p).toAbsolutePath().normalize();
                 }
             }
         }

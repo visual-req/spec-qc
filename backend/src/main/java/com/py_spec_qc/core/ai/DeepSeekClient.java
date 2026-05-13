@@ -31,7 +31,10 @@ public final class DeepSeekClient {
     public String chatCompletions(String baseUrl, String apiKey, String model, List<Map<String, Object>> messages) {
         String requestId = UUID.randomUUID().toString();
         long startedNs = System.nanoTime();
-        String url = stripTrailingSlash(baseUrl) + "/chat/completions";
+        String url = buildChatCompletionsUrl(baseUrl);
+        log(requestId, "llm_url", Map.of(
+                "LLM_URL", "***LLM URL*** " + safeUrl(url)
+        ));
         Map<String, Object> payload = new HashMap<>();
         payload.put("model", model);
         payload.put("messages", messages);
@@ -184,6 +187,18 @@ public final class DeepSeekClient {
             t = t.substring(0, t.length() - 1);
         }
         return t;
+    }
+
+    private static String buildChatCompletionsUrl(String baseUrl) {
+        String b = stripTrailingSlash(baseUrl);
+        if (b.isBlank()) {
+            return "/chat/completions";
+        }
+        String normalized = b.replaceAll("\\s+", "");
+        if (normalized.endsWith("/chat/completions") || normalized.endsWith("chat/completions")) {
+            return b;
+        }
+        return b + "/chat/completions";
     }
 
     private static boolean sensitiveLoggingEnabled() {

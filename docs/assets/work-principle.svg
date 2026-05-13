@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="420" viewBox="0 0 980 420" role="img" aria-label="工作原理">
+  <defs>
+    <style>
+      .bg{fill:#ffffff}
+      .title{font:700 20px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#111827}
+      .label{font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#111827}
+      .text{font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#374151}
+      .box{fill:#f9fafb;stroke:#cbd5e1;stroke-width:1.2;rx:12}
+      .box2{fill:#eef2ff;stroke:#c7d2fe;stroke-width:1.2;rx:12}
+      .box3{fill:#ecfeff;stroke:#a5f3fc;stroke-width:1.2;rx:12}
+      .arrow{stroke:#64748b;stroke-width:1.6;fill:none;marker-end:url(#m)}
+      .note{fill:#fff7ed;stroke:#fdba74;stroke-width:1.2;rx:12}
+    </style>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="980" height="420"/>
+  <text class="title" x="28" y="44">工作原理</text>
+
+  <rect class="box" x="28" y="78" width="190" height="84"/>
+  <text class="label" x="46" y="110">需求输入</text>
+  <text class="text" x="46" y="132">Word / Markdown / 目录</text>
+
+  <rect class="box" x="254" y="78" width="190" height="84"/>
+  <text class="label" x="272" y="110">解析与预处理</text>
+  <text class="text" x="272" y="132">抽取文本、清洗、分段</text>
+
+  <rect class="box2" x="480" y="58" width="222" height="124"/>
+  <text class="label" x="498" y="92">规则与提示词</text>
+  <text class="text" x="498" y="114">quality_standard / 行业规则</text>
+  <text class="text" x="498" y="134">Prompt 组装、参数(温度等)</text>
+  <text class="text" x="498" y="154">语言(en/zh/ja)</text>
+
+  <rect class="box3" x="738" y="78" width="214" height="84"/>
+  <text class="label" x="756" y="110">LLM 调用</text>
+  <text class="text" x="756" y="132">/chat/completions</text>
+
+  <path class="arrow" d="M218 120 L254 120"/>
+  <path class="arrow" d="M444 120 L480 120"/>
+  <path class="arrow" d="M702 120 L738 120"/>
+
+  <rect class="box" x="254" y="226" width="190" height="84"/>
+  <text class="label" x="272" y="258">结果解析与校验</text>
+  <text class="text" x="272" y="280">JSON 解析、字段校验</text>
+
+  <rect class="box" x="28" y="226" width="190" height="84"/>
+  <text class="label" x="46" y="258">过程日志</text>
+  <text class="text" x="46" y="280">spec-qc.log / large-model.log</text>
+
+  <rect class="note" x="480" y="226" width="222" height="84"/>
+  <text class="label" x="498" y="258">输出</text>
+  <text class="text" x="498" y="280">Excel 报告、问题列表、进度</text>
+
+  <path class="arrow" d="M845 162 L845 220"/>
+  <path class="arrow" d="M738 262 L702 262"/>
+  <path class="arrow" d="M480 262 L444 262"/>
+  <path class="arrow" d="M254 262 L218 262"/>
+
+  <path class="arrow" d="M349 162 L349 220"/>
+  <path class="arrow" d="M123 162 L123 220"/>
+
+  <rect class="box" x="738" y="226" width="214" height="84"/>
+  <text class="label" x="756" y="258">聚合与评分</text>
+  <text class="text" x="756" y="280">合并问题、去重、统计</text>
+</svg>

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="420" viewBox="0 0 980 420" role="img" aria-label="质量调优">
+  <defs>
+    <style>
+      .bg{fill:#ffffff}
+      .title{font:700 20px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#111827}
+      .box{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1.2;rx:14}
+      .accent{fill:#fefce8;stroke:#fde047;stroke-width:1.2;rx:14}
+      .label{font:700 13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#111827}
+      .text{font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#374151}
+      .arrow{stroke:#64748b;stroke-width:1.6;fill:none;marker-end:url(#m)}
+      .loop{stroke:#0f172a;stroke-width:1.8;fill:none;stroke-dasharray:6 4;marker-end:url(#m2)}
+    </style>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="m2" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0f172a"/>
+    </marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="980" height="420"/>
+  <text class="title" x="28" y="44">质量调优</text>
+
+  <rect class="box" x="28" y="86" width="276" height="110"/>
+  <text class="label" x="46" y="118">规则调优</text>
+  <text class="text" x="46" y="142">拆分/补充规则条目（#### 维度）</text>
+  <text class="text" x="46" y="162">补充行业规则，避免跨行业误判</text>
+  <text class="text" x="46" y="182">让证据/建议更可执行</text>
+
+  <rect class="box" x="352" y="86" width="276" height="110"/>
+  <text class="label" x="370" y="118">提示词与参数</text>
+  <text class="text" x="370" y="142">分段策略：片段长度、重叠窗口</text>
+  <text class="text" x="370" y="162">温度、输出格式（JSON）约束</text>
+  <text class="text" x="370" y="182">中英文术语对齐与示例</text>
+
+  <rect class="box" x="676" y="86" width="276" height="110"/>
+  <text class="label" x="694" y="118">运行环境与可观测性</text>
+  <text class="text" x="694" y="142">打印 LLM URL、request_id、耗时</text>
+  <text class="text" x="694" y="162">控制敏感日志（SPEC_QC_LOG_SENSITIVE）</text>
+  <text class="text" x="694" y="182">限流/重试与错误定位</text>
+
+  <rect class="accent" x="28" y="244" width="924" height="132"/>
+  <text class="label" x="46" y="278">基于结果的闭环</text>
+  <text class="text" x="46" y="304">扫描输出 → 人工复核 → 发现误报/漏报 → 调整规则与提示词 → 再次扫描验证</text>
+  <text class="text" x="46" y="328">目标：降低误报、提升一致性、让问题点更可落地</text>
+
+  <path class="arrow" d="M166 196 L166 238"/>
+  <path class="arrow" d="M490 196 L490 238"/>
+  <path class="arrow" d="M814 196 L814 238"/>
+
+  <path class="loop" d="M900 330 C900 390 80 390 80 330"/>
+</svg>

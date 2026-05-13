@@ -11,6 +11,8 @@ import com.py_spec_qc.core.model.JobStatusResponse;
 import com.py_spec_qc.core.model.RootEntry;
 import com.py_spec_qc.core.model.ScanRequest;
 import com.py_spec_qc.core.xlsx.XlsxIO;
+import java.awt.GraphicsEnvironment;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -27,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.swing.JFileChooser;
+import javax.swing.SwingUtilities;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
@@ -295,6 +299,52 @@ public final class ApiController {
         out.put("path", dir.toString());
         out.put("entries", entries);
         return out;
+    }
+
+    @GetMapping("/pick_dir")
+    public Map<String, String> pickDir(@RequestParam(name = "initial", required = false) String initial) {
+        if (GraphicsEnvironment.isHeadless()) {
+            return Map.of("error", "headless mode: cannot open native directory picker");
+        }
+        String init = safeTrim(initial);
+        final String[] result = new String[] { "", "" };
+        Runnable task = () -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            chooser.setAcceptAllFileFilterUsed(false);
+            chooser.setDialogTitle("Choose Folder");
+            try {
+                if (!init.isBlank()) {
+                    Path initPath = Path.of(init).toAbsolutePath().normalize();
+                    if (Files.isDirectory(initPath)) {
+                        chooser.setCurrentDirectory(initPath.toFile());
+                    } else if (initPath.getParent() != null && Files.isDirectory(initPath.getParent())) {
+                        chooser.setCurrentDirectory(initPath.getParent().toFile());
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            int ret = chooser.showOpenDialog(null);
+            if (ret == JFileChooser.APPROVE_OPTION) {
+                File f = chooser.getSelectedFile();
+                if (f != null) {
+                    result[0] = f.toPath().toAbsolutePath().normalize().toString();
+                }
+            }
+        };
+        try {
+            if (SwingUtilities.isEventDispatchThread()) {
+                task.run();
+            } else {
+                SwingUtilities.invokeAndWait(task);
+            }
+        } catch (Exception e) {
+            result[1] = e.getMessage() == null ? String.valueOf(e) : e.getMessage();
+        }
+        if (!result[1].isBlank()) {
+            return Map.of("error", result[1]);
+        }
+        return Map.of("path", result[0]);
     }
 
     @GetMapping("/download")

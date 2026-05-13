@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="420" viewBox="0 0 980 420" role="img" aria-label="扫描过程">
+  <defs>
+    <style>
+      .bg{fill:#ffffff}
+      .title{font:700 20px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#111827}
+      .step{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1.2;rx:14}
+      .label{font:700 13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#111827}
+      .text{font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#374151}
+      .n{fill:#111827}
+      .circle{fill:#111827}
+      .arrow{stroke:#64748b;stroke-width:1.6;fill:none;marker-end:url(#m)}
+    </style>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="980" height="420"/>
+  <text class="title" x="28" y="44">扫描过程</text>
+
+  <g transform="translate(28,78)">
+    <rect class="step" x="0" y="0" width="280" height="92"/>
+    <circle class="circle" cx="22" cy="26" r="12"/>
+    <text class="label" x="18" y="31" fill="#fff">1</text>
+    <text class="label" x="50" y="30">选择/上传需求文件</text>
+    <text class="text" x="50" y="52">Web UI 或 CLI 指定 req_dir</text>
+    <text class="text" x="50" y="72">支持多个 .docx 批量扫描</text>
+  </g>
+
+  <g transform="translate(350,78)">
+    <rect class="step" x="0" y="0" width="280" height="92"/>
+    <circle class="circle" cx="22" cy="26" r="12"/>
+    <text class="label" x="18" y="31" fill="#fff">2</text>
+    <text class="label" x="50" y="30">加载规则与配置</text>
+    <text class="text" x="50" y="52">work_dir/quality + 语言选择</text>
+    <text class="text" x="50" y="72">行业过滤（SPEC_QC_INDUSTRY）</text>
+  </g>
+
+  <g transform="translate(672,78)">
+    <rect class="step" x="0" y="0" width="280" height="92"/>
+    <circle class="circle" cx="22" cy="26" r="12"/>
+    <text class="label" x="18" y="31" fill="#fff">3</text>
+    <text class="label" x="50" y="30">抽取文本 &amp; 分段</text>
+    <text class="text" x="50" y="52">从 Word 提取正文/表格</text>
+    <text class="text" x="50" y="72">拆成可控长度的段落片段</text>
+  </g>
+
+  <path class="arrow" d="M308 124 L350 124"/>
+  <path class="arrow" d="M630 124 L672 124"/>
+
+  <g transform="translate(28,214)">
+    <rect class="step" x="0" y="0" width="924" height="118"/>
+    <circle class="circle" cx="22" cy="26" r="12"/>
+    <text class="label" x="18" y="31" fill="#fff">4</text>
+    <text class="label" x="50" y="30">逐段调用模型并聚合结果</text>
+    <text class="text" x="50" y="54">对每个片段：组装 Prompt → 调用 LLM → 解析 JSON → 提取问题点</text>
+    <text class="text" x="50" y="76">合并重复问题、统计问题分布、记录进度与日志</text>
+    <text class="text" x="50" y="98">失败时保留 request_id / HTTP 信息便于排障</text>
+  </g>
+
+  <path class="arrow" d="M812 170 L812 206"/>
+
+  <g transform="translate(28,350)">
+    <rect class="step" x="0" y="0" width="456" height="52"/>
+    <circle class="circle" cx="22" cy="26" r="12"/>
+    <text class="label" x="18" y="31" fill="#fff">5</text>
+    <text class="label" x="50" y="30">输出报告</text>
+    <text class="text" x="150" y="30">Excel / JSON / 下载</text>
+  </g>
+
+  <g transform="translate(496,350)">
+    <rect class="step" x="0" y="0" width="456" height="52"/>
+    <circle class="circle" cx="22" cy="26" r="12"/>
+    <text class="label" x="18" y="31" fill="#fff">6</text>
+    <text class="label" x="50" y="30">复核与迭代</text>
+    <text class="text" x="170" y="30">接受/拒绝 → 优化规则/提示词</text>
+  </g>
+  <path class="arrow" d="M490 376 L496 376"/>
+</svg>

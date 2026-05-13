@@ -94,6 +94,7 @@ java -jar spec-qc-0.1.0.jar scan -req /path/to/req_dir
 更多结构说明见：
 
 - `docs/zh/structure.md`
+- 图示：`docs/zh/work-principle.md` / `docs/zh/scan-process.md` / `docs/zh/quality-tuning.md`
 
 ## 安全提示
 

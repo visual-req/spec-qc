@@ -2,6 +2,35 @@
 
 ## Getting Started
 
+### 0) Fork（開発協力）
+
+二次開発や変更の取り込み（PR）を行う場合は、GitHub の Fork ワークフローを推奨します：
+
+- GitHub で Fork：`https://github.com/visual-req/spec-review`
+- 自分の Fork をクローン（`<you>` を自分のユーザー名に置き換え）：
+
+```bash
+git clone https://github.com/<you>/spec-review.git
+cd spec-review
+```
+
+- upstream を追加（本家の更新を取り込むため）：
+
+```bash
+git remote add upstream https://github.com/visual-req/spec-review.git
+git remote -v
+```
+
+- ブランチ作成 → コミット → push：
+
+```bash
+git checkout -b feat/your-change
+git commit -am "..."
+git push -u origin feat/your-change
+```
+
+- GitHub 上で `visual-req/spec-review` の `main` に向けて Pull Request を作成
+
 ### 1) 作業ディレクトリの準備
 
 `executable/` に組み込まれているスクリプトを使用して、作業ディレクトリを作成します（Windows / macOS / Linux）：

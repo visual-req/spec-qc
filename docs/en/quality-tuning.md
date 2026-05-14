@@ -2,6 +2,16 @@
 
 ![Quality Tuning](../assets/quality-tuning.svg)
 
+## When You Need Quality Tuning
+
+Use an iterative loop “scan → review → tune → re-scan” when:
+
+- Too many false positives: many findings are marked as “not applicable/invalid”, hurting usability and efficiency
+- Too many misses: obvious issues are not detected; rules need broader coverage or clearer boundary conditions
+- Industry switch: moving to a new domain/industry with different terminology and compliance requirements; add industry rules to avoid cross-industry misjudgments
+- Document shape changes: templates/section structures/terminology tables/writing styles change and reduce hit rates
+- Hallucination or inconsistency: unstable outputs (inconsistent standards, missing evidence snippets); strengthen structured constraints and evidence requirements
+
 Key points:
 
 - Rule tuning: split/supplement rule items, add industry rules, reduce false positives and cross-industry misjudgments

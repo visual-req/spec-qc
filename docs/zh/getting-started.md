@@ -2,6 +2,35 @@
 
 ## Getting Started
 
+### 0) Fork（协作开发）
+
+如果需要二次开发并提交改动，建议按 GitHub 的 Fork 流程协作：
+
+- 在 GitHub 上 Fork 仓库：`https://github.com/visual-req/spec-review`
+- 克隆你自己的 Fork（你的用户名替换为 `<you>`）：
+
+```bash
+git clone https://github.com/<you>/spec-review.git
+cd spec-review
+```
+
+- 添加上游仓库（用于同步主线更新）：
+
+```bash
+git remote add upstream https://github.com/visual-req/spec-review.git
+git remote -v
+```
+
+- 开发时创建分支并提交：
+
+```bash
+git checkout -b feat/your-change
+git commit -am "..."
+git push -u origin feat/your-change
+```
+
+- 在 GitHub 上发起 Pull Request 到 `visual-req/spec-review` 的 `main` 分支
+
 ### 1) 准备工作目录
 
 使用 `executable/` 内置脚本创建工作目录（Windows / macOS / Linux）：

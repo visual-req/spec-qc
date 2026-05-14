@@ -2,6 +2,35 @@
 
 ## Getting Started
 
+### 0) Fork (Contributing)
+
+If you want to customize the project and contribute changes back, use the GitHub Fork workflow:
+
+- Fork the repository on GitHub: `https://github.com/visual-req/spec-review`
+- Clone your fork (replace `<you>` with your GitHub username):
+
+```bash
+git clone https://github.com/<you>/spec-review.git
+cd spec-review
+```
+
+- Add the upstream repository (to keep in sync with the mainline):
+
+```bash
+git remote add upstream https://github.com/visual-req/spec-review.git
+git remote -v
+```
+
+- Create a branch, commit, and push:
+
+```bash
+git checkout -b feat/your-change
+git commit -am "..."
+git push -u origin feat/your-change
+```
+
+- Open a Pull Request to the `main` branch of `visual-req/spec-review`
+
 ### 1) Prepare the Working Directory
 
 Use the built-in scripts in `executable/` to create the working directory (Windows / macOS / Linux):

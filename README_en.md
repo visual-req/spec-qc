@@ -1,8 +1,25 @@
-[中文](README.md) | [English](README_en.md) | [日本語](README_ja.md)
+<h3 align="center">spec-review</h3>
+<p align="center">SpecQC: a rule + LLM based requirement quality checker that batch-scans <code>.docx</code>, outputs issues, and provides a local Web UI for review and export.</p>
+<p align="center">
+  <a href="https://github.com/visual-req/spec-review/releases"><img src="https://img.shields.io/github/v/release/visual-req/spec-review" alt="Release"></a>
+  <a href="https://github.com/visual-req/spec-review"><img src="https://img.shields.io/github/stars/visual-req/spec-review?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/visual-req/spec-review/issues"><img src="https://img.shields.io/github/issues/visual-req/spec-review?style=flat-square" alt="Issues"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
+</p>
+<p align="center">
+  <a href="README_en.md">English</a> · <a href="README.md">中文</a> · <a href="README_ja.md">日本語</a>
+  <br/>
+  <a href="docs/en/getting-started.md">Getting started</a> · <a href="docs/en/manual.md">Manual</a> · <a href="docs/en/rules.md">Rules</a> · <a href="docs/en/troubleshooting.md">Troubleshooting</a>
+</p>
+<hr />
 
-# spec-qc (AI Requirement Quality Scan)
+Version: 0.1.0 · License: MIT ([LICENSE](LICENSE))
 
-This project is used for batch scanning requirement Word documents (`.docx`), outputting quality issues to Excel (`.xlsx`), and providing a local Web UI for directory selection, progress tracking, issue acceptance/rejection, and result downloading.
+## Why This Is Reliable
+
+- Rule-driven: findings are constrained by rule files rather than unconstrained free-form generation
+- Traceable: each issue keeps evidence snippets and location info for quick human verification
+- Regressable: after tuning rules/prompts, you can re-scan historical samples to reduce false positives and misses
 
 ## Directory Structure
 

@@ -1,8 +1,25 @@
-[中文](README.md) | [English](README_en.md) | [日本語](README_ja.md)
+<h3 align="center">spec-review</h3>
+<p align="center">SpecQC：ルール + LLM による要件品質チェックツール。<code>.docx</code> を一括スキャンして指摘を出力し、ローカル Web UI でレビューとエクスポートを行えます。</p>
+<p align="center">
+  <a href="https://github.com/visual-req/spec-review/releases"><img src="https://img.shields.io/github/v/release/visual-req/spec-review" alt="Release"></a>
+  <a href="https://github.com/visual-req/spec-review"><img src="https://img.shields.io/github/stars/visual-req/spec-review?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/visual-req/spec-review/issues"><img src="https://img.shields.io/github/issues/visual-req/spec-review?style=flat-square" alt="Issues"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
+</p>
+<p align="center">
+  <a href="README_en.md">English</a> · <a href="README.md">中文</a> · <a href="README_ja.md">日本語</a>
+  <br/>
+  <a href="docs/ja/getting-started.md">はじめに</a> · <a href="docs/ja/manual.md">マニュアル</a> · <a href="docs/ja/rules.md">ルール</a> · <a href="docs/ja/troubleshooting.md">トラブルシューティング</a>
+</p>
+<hr />
 
-# spec-qc（AI 要件品質スキャン）
+Version: 0.1.0 · License: MIT ([LICENSE](LICENSE))
 
-このプロジェクトは、要件定義のWordドキュメント（`.docx`）を一括スキャンし、品質の問題をExcel（`.xlsx`）に出力し、ローカルのWeb UIを提供して、ディレクトリの選択、進捗の確認、問題の個別承認/拒否、結果のダウンロードを行うためのものです。
+## 信頼性の理由
+
+- ルール駆動：ルールファイルで判定基準を拘束し、自由生成だけに依存しない
+- 追跡可能：各指摘に根拠の抜粋と位置情報が残り、人手で素早く確認できる
+- 回帰可能：ルール/プロンプト調整後に過去サンプルで再スキャンし、誤検知と見逃しを継続的に低減できる
 
 ## ディレクトリ構成
 

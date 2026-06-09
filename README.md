@@ -1,8 +1,25 @@
-[中文](README.md) | [English](README_en.md) | [日本語](README_ja.md)
+<h3 align="center">spec-review</h3>
+<p align="center">SpecQC：基于规则 + LLM 的需求质量检查工具，批量扫描 <code>.docx</code> 输出问题清单，并提供本地 Web UI 做复核与导出。</p>
+<p align="center">
+  <a href="https://github.com/visual-req/spec-review/releases"><img src="https://img.shields.io/github/v/release/visual-req/spec-review" alt="Release"></a>
+  <a href="https://github.com/visual-req/spec-review"><img src="https://img.shields.io/github/stars/visual-req/spec-review?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/visual-req/spec-review/issues"><img src="https://img.shields.io/github/issues/visual-req/spec-review?style=flat-square" alt="Issues"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
+</p>
+<p align="center">
+  <a href="README_en.md">English</a> · <a href="README.md">中文</a> · <a href="README_ja.md">日本語</a>
+  <br/>
+  <a href="docs/zh/getting-started.md">快速开始</a> · <a href="docs/zh/manual.md">使用手册</a> · <a href="docs/zh/rules.md">规则</a> · <a href="docs/zh/troubleshooting.md">排障</a>
+</p>
+<hr />
 
-# spec-qc（AI 需求质量扫描）
+Version: 0.1.0 · License: MIT ([LICENSE](LICENSE))
 
-本项目用于批量扫描需求 Word 文档（.docx），输出质量问题到 Excel（.xlsx），并提供本地 Web UI 用于选择目录、查看进度、逐条接受/拒绝问题点、下载结果。
+## 为什么可靠
+
+- 规则驱动：输出口径由规则文件约束，避免纯“自由发挥”
+- 可追溯：每条问题保留证据片段与定位信息，便于快速复核
+- 可回归：规则/提示词调整后可用历史样本文档回归扫描，持续降低误报与漏报
 
 ## 目录结构
 

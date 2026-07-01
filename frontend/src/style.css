@@ -45,6 +45,50 @@ label {
 
 .input-row { display: flex; gap: 8px; }
 
+.llm-config-box {
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.llm-config-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.llm-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+
+.llm-config-item {
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 10px;
+  min-width: 0;
+}
+
+.llm-config-item-wide {
+  grid-column: 1 / -1;
+}
+
+.llm-config-item .k {
+  font-size: 12px;
+  color: rgba(0,0,0,.45);
+  margin-bottom: 4px;
+}
+
+.llm-config-item .v {
+  font-size: 13px;
+  color: rgba(0,0,0,.88);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 input {
   flex: 1;
   border: 1px solid #d9d9d9;

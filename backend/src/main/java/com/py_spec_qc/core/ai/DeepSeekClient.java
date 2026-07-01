@@ -31,7 +31,7 @@ public final class DeepSeekClient {
     public String chatCompletions(String baseUrl, String apiKey, String model, List<Map<String, Object>> messages) {
         String requestId = UUID.randomUUID().toString();
         long startedNs = System.nanoTime();
-        String url = buildChatCompletionsUrl(baseUrl);
+        String url = configuredRequestUrl(baseUrl);
         log(requestId, "llm_url", Map.of(
                 "LLM_URL", "***LLM URL*** " + safeUrl(url)
         ));
@@ -81,7 +81,7 @@ public final class DeepSeekClient {
         try {
             resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
         } catch (IOException | InterruptedException e) {
-            if (e instanceof InterruptedException ie) {
+            if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
             log(requestId, "request_error", Map.of(
@@ -154,8 +154,8 @@ public final class DeepSeekClient {
             log(requestId, "response_usage", fields);
         }
 
-        JsonNode content = root.path("choices").path(0).path("message").path("content");
-        if (!content.isTextual() || content.asText().isBlank()) {
+        String out = extractAssistantContent(root);
+        if (out.isBlank()) {
             log(requestId, "missing_content", Map.of(
                     "provider", "deepseek",
                     "url", safeUrl(url),
@@ -165,7 +165,6 @@ public final class DeepSeekClient {
             ));
             throw new RuntimeException("DeepSeek API response missing choices[0].message.content");
         }
-        String out = content.asText();
         log(requestId, "request_done", Map.of(
                 "provider", "deepseek",
                 "url", safeUrl(url),
@@ -178,27 +177,26 @@ public final class DeepSeekClient {
         return out;
     }
 
-    private static String stripTrailingSlash(String s) {
-        if (s == null) {
+    private static String configuredRequestUrl(String baseUrl) {
+        if (baseUrl == null) {
             return "";
         }
-        String t = s.trim();
-        while (t.endsWith("/")) {
-            t = t.substring(0, t.length() - 1);
-        }
-        return t;
+        return baseUrl.trim();
     }
 
-    private static String buildChatCompletionsUrl(String baseUrl) {
-        String b = stripTrailingSlash(baseUrl);
-        if (b.isBlank()) {
-            return "/chat/completions";
+    private static String extractAssistantContent(JsonNode root) {
+        if (root == null) {
+            return "";
         }
-        String normalized = b.replaceAll("\\s+", "");
-        if (normalized.endsWith("/chat/completions") || normalized.endsWith("chat/completions")) {
-            return b;
+        JsonNode messageContent = root.path("choices").path(0).path("message").path("content");
+        if (messageContent.isTextual() && !messageContent.asText().isBlank()) {
+            return messageContent.asText();
         }
-        return b + "/chat/completions";
+        JsonNode textContent = root.path("choices").path(0).path("text");
+        if (textContent.isTextual() && !textContent.asText().isBlank()) {
+            return textContent.asText();
+        }
+        return "";
     }
 
     private static boolean sensitiveLoggingEnabled() {

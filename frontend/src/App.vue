@@ -37,6 +37,36 @@
           <button class="btn" :class="openMode === 'upload' ? 'btn-primary' : ''" :disabled="isScanning" @click="openMode = 'upload'">{{ t('btn.uploadFiles') }}</button>
         </div>
         <div class="spacer"></div>
+        <div class="llm-config-box">
+          <div class="llm-config-title">{{ t('section.llmConfig') }}</div>
+          <div class="llm-config-grid mono">
+            <div class="llm-config-item">
+              <div class="k">{{ t('llm.url') }}</div>
+              <div class="v">{{ llmRuntime.url || '-' }}</div>
+            </div>
+            <div class="llm-config-item">
+              <div class="k">{{ t('llm.model') }}</div>
+              <div class="v">{{ llmRuntime.model || '-' }}</div>
+            </div>
+            <div class="llm-config-item">
+              <div class="k">{{ t('llm.authMode') }}</div>
+              <div class="v">{{ llmRuntime.authMode || '-' }}</div>
+            </div>
+            <div class="llm-config-item">
+              <div class="k">{{ t('llm.apiKey') }}</div>
+              <div class="v">{{ llmRuntime.apiKeyMasked || '-' }}</div>
+            </div>
+            <div class="llm-config-item llm-config-item-wide">
+              <div class="k">{{ t('llm.configPath') }}</div>
+              <div class="v">{{ llmRuntime.configPath || '-' }}</div>
+            </div>
+            <div v-if="llmRuntime.error" class="llm-config-item llm-config-item-wide">
+              <div class="k">{{ t('llm.loadError') }}</div>
+              <div class="v">{{ llmRuntime.error }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="spacer"></div>
 
         <div v-if="openMode === 'local'">
           <div>
@@ -273,6 +303,7 @@ const dict = {
     'hint.uploadExplain': '上传文件会保存到默认 input 目录，扫描结果输出到默认 output 目录，文件名会追加时间戳避免覆盖',
     'section.summary': '扫描汇总',
     'section.issues': '问题查看',
+    'section.llmConfig': '模型访问参数',
     'stat.totalFiles': '总文件数',
     'stat.scannedFiles': '已扫描文件数',
     'stat.totalIssues': '发现问题总数',
@@ -317,7 +348,14 @@ const dict = {
     'msg.readDirFailedPrefix': '读取目录失败：',
     'msg.revisedWrittenPrefix': '已写入修订版 Word：',
     'msg.failPrefix': '失败: ',
+    'msg.runtimeConfigHeader': '当前模型访问参数',
     'notif.newIssue': '发现新问题：{category}（{severity}）',
+    'llm.url': 'LLM URL',
+    'llm.model': '模型名',
+    'llm.authMode': '鉴权方式',
+    'llm.apiKey': 'API Key',
+    'llm.configPath': '配置文件',
+    'llm.loadError': '读取失败',
     'time.h': '小时',
     'time.m': '分钟',
     'time.s': '秒',
@@ -360,6 +398,7 @@ const dict = {
     'hint.uploadExplain': 'Uploaded files are saved to the default input folder. Results are written to the default output folder. Filenames are suffixed with a timestamp to avoid overwrite.',
     'section.summary': 'Summary',
     'section.issues': 'Issues',
+    'section.llmConfig': 'LLM Runtime Config',
     'stat.totalFiles': 'Total Files',
     'stat.scannedFiles': 'Scanned Files',
     'stat.totalIssues': 'Total Issues',
@@ -404,7 +443,14 @@ const dict = {
     'msg.readDirFailedPrefix': 'Failed to read folder: ',
     'msg.revisedWrittenPrefix': 'Revised Word written: ',
     'msg.failPrefix': 'Failed: ',
+    'msg.runtimeConfigHeader': 'Current LLM runtime config',
     'notif.newIssue': 'New issue: {category} ({severity})',
+    'llm.url': 'LLM URL',
+    'llm.model': 'Model',
+    'llm.authMode': 'Auth',
+    'llm.apiKey': 'API Key',
+    'llm.configPath': 'Config File',
+    'llm.loadError': 'Load Error',
     'time.h': 'h',
     'time.m': 'm',
     'time.s': 's',
@@ -447,6 +493,7 @@ const dict = {
     'hint.uploadExplain': 'アップロードしたファイルは既定の input に保存され、結果は既定の output に出力されます。上書き防止のためファイル名にタイムスタンプが付きます。',
     'section.summary': 'サマリー',
     'section.issues': '問題一覧',
+    'section.llmConfig': 'モデル接続パラメータ',
     'stat.totalFiles': '総ファイル数',
     'stat.scannedFiles': 'スキャン済み',
     'stat.totalIssues': '問題数合計',
@@ -491,7 +538,14 @@ const dict = {
     'msg.readDirFailedPrefix': 'フォルダの読み取りに失敗：',
     'msg.revisedWrittenPrefix': '修正版Word：',
     'msg.failPrefix': '失敗: ',
+    'msg.runtimeConfigHeader': '現在のモデル接続パラメータ',
     'notif.newIssue': '新しい問題：{category}（{severity}）',
+    'llm.url': 'LLM URL',
+    'llm.model': 'モデル名',
+    'llm.authMode': '認証方式',
+    'llm.apiKey': 'API Key',
+    'llm.configPath': '設定ファイル',
+    'llm.loadError': '読み取り失敗',
     'time.h': '時間',
     'time.m': '分',
     'time.s': '秒',
@@ -538,6 +592,14 @@ const openMode = ref('local')
 
 const reqPicker = ref(null)
 const reqFiles = ref([])
+const llmRuntime = ref({
+  url: '',
+  model: '',
+  authMode: '',
+  apiKeyMasked: '',
+  configPath: '',
+  error: '',
+})
 
 const jobId = ref('')
 const statusText = ref('')
@@ -692,6 +754,41 @@ async function postJson(url, obj) {
 async function postForm(url, formData) {
   const resp = await fetch(url, { method: 'POST', body: formData })
   return await resp.json()
+}
+
+async function loadLlmConfig() {
+  try {
+    const data = await getJson('/api/llm_config')
+    llmRuntime.value = {
+      url: String(data?.url || ''),
+      model: String(data?.model || ''),
+      authMode: String(data?.auth_mode || ''),
+      apiKeyMasked: String(data?.api_key_masked || ''),
+      configPath: String(data?.config_path || ''),
+      error: '',
+    }
+  } catch (e) {
+    llmRuntime.value = {
+      url: '',
+      model: '',
+      authMode: '',
+      apiKeyMasked: '',
+      configPath: '',
+      error: String(e),
+    }
+  }
+}
+
+function llmRuntimeLines() {
+  const info = llmRuntime.value || {}
+  const lines = [t('msg.runtimeConfigHeader')]
+  if (info.url) lines.push(t('llm.url') + ': ' + info.url)
+  if (info.model) lines.push(t('llm.model') + ': ' + info.model)
+  if (info.authMode) lines.push(t('llm.authMode') + ': ' + info.authMode)
+  if (info.apiKeyMasked) lines.push(t('llm.apiKey') + ': ' + info.apiKeyMasked)
+  if (info.configPath) lines.push(t('llm.configPath') + ': ' + info.configPath)
+  if (info.error) lines.push(t('llm.loadError') + ': ' + info.error)
+  return lines
 }
 
 function formatLocalTime(iso) {
@@ -1048,7 +1145,7 @@ async function startScan() {
     }
   }
   showConfig.value = false
-  statusText.value = t('msg.startingScan')
+  statusText.value = [t('msg.startingScan'), ...llmRuntimeLines()].join('\n')
   progressFiles.value = []
   progressData.value = null
   selectedFile.value = '__ALL__'
@@ -1143,7 +1240,10 @@ function onSelectedFileChange() {
   }
 }
 
-onMounted(loadCache)
+onMounted(async () => {
+  await loadCache()
+  await loadLlmConfig()
+})
 
 onBeforeUnmount(() => {
   if (pollTimer.value) clearInterval(pollTimer.value)

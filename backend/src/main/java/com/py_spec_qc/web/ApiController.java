@@ -98,6 +98,22 @@ public final class ApiController {
         );
     }
 
+    @GetMapping("/llm_config")
+    public Map<String, String> getLlmConfig() {
+        AppConfig config = new ConfigLoader().load();
+        String url = config == null ? "" : safeTrim(config.deepseekBaseUrl);
+        String model = config == null ? "" : safeTrim(config.deepseekModel);
+        String configPath = (config == null || config.configPath == null) ? "" : config.configPath.toAbsolutePath().normalize().toString();
+        String authMode = (config == null || safeTrim(config.deepseekApiKey).isBlank()) ? "missing" : "bearer";
+        return Map.of(
+                "url", url,
+                "model", model,
+                "config_path", configPath,
+                "auth_mode", authMode,
+                "api_key_masked", maskSecret(config == null ? "" : config.deepseekApiKey)
+        );
+    }
+
     private static String existingDirOr(String candidate, String fallback) {
         String abs = toAbsolutePathString(candidate);
         if (!abs.isBlank()) {
@@ -109,6 +125,17 @@ public final class ApiController {
             }
         }
         return toAbsolutePathString(fallback);
+    }
+
+    private static String maskSecret(String raw) {
+        String s = safeTrim(raw);
+        if (s.isBlank()) {
+            return "";
+        }
+        if (s.length() <= 8) {
+            return "*".repeat(s.length());
+        }
+        return s.substring(0, 4) + "*".repeat(Math.max(0, s.length() - 8)) + s.substring(s.length() - 4);
     }
 
     private static final class UploadDirs {
